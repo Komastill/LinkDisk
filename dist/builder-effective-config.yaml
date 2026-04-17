@@ -1,0 +1,22 @@
+directories:
+  output: dist
+  buildResources: build
+asar: false
+appId: com.linkdisk.app
+productName: LinkDisk
+files:
+  - filter:
+      - electron-main.js
+      - index.html
+      - main.js
+      - style.css
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+electronVersion: 28.0.0
