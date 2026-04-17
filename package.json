@@ -1,0 +1,40 @@
+{
+  "name": "linkdisk",
+  "version": "1.0.0",
+  "description": "LinkDisk 局域网文件管理器",
+  "main": "src/main/webapp/electron-main.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "build": {
+    "appId": "com.linkdisk.app",
+    "productName": "LinkDisk",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/main/webapp/**/*",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  }
+}
