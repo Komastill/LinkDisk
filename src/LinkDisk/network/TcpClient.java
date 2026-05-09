@@ -1,42 +1,60 @@
 package LinkDisk.network;
 
-import java.io.FileInputStream;
-import java.io.OutputStream;
-import java.net.Socket;
 import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.net.Socket;
 
 public class TcpClient {
 
-    public static void main(String[] args) throws Exception {
+    public static void sendFile(
+            File file,
+            String ip
+    ) {
 
-        Socket socket =
-                new Socket("127.0.0.1", 6000);
+        try {
 
-        System.out.println("已连接服务器");
+            Socket socket =
+                    new Socket(ip, 6000);
 
-        FileInputStream fileInputStream =
-                new FileInputStream("/Users/cxr15803959066/Desktop/陈笑然-优秀学生申请表.doc");
+            DataOutputStream dataOutputStream =
+                    new DataOutputStream(
+                            socket.getOutputStream()
+                    );
 
-        DataOutputStream dataOutputStream =
-                new DataOutputStream(socket.getOutputStream());
+            dataOutputStream.writeUTF(
+                    file.getName()
+            );
 
-        String fileName = "陈笑然-优秀学生申请表.doc";
+            FileInputStream fileInputStream =
+                    new FileInputStream(file);
 
-        dataOutputStream.writeUTF(fileName);
+            byte[] buffer = new byte[1024];
 
-        byte[] buffer = new byte[1024];
+            int len;
 
-        int len;
+            while ((len =
+                    fileInputStream.read(buffer))
+                    != -1) {
 
-        while ((len = fileInputStream.read(buffer)) != -1) {
+                dataOutputStream.write(
+                        buffer,
+                        0,
+                        len
+                );
+            }
 
-        	dataOutputStream.write(buffer, 0, len);        }
+            fileInputStream.close();
 
-        System.out.println("文件发送完成");
+            dataOutputStream.close();
 
-        fileInputStream.close();
+            socket.close();
 
-        dataOutputStream.close();
-        socket.close();
+            System.out.println("文件发送成功");
+
+        } catch (Exception e) {
+
+            e.printStackTrace();
+        }
     }
 }

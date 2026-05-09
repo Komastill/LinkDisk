@@ -5,30 +5,53 @@ import java.net.DatagramSocket;
 
 public class UdpListener {
 
-    public static void main(String[] args) throws Exception {
+    public static void startListening(
+            DeviceFoundListener listener
+    ) {
 
-        DatagramSocket socket = new DatagramSocket(54321);
+        new Thread(() -> {
 
-        byte[] buffer = new byte[1024];
+            try {
 
-        System.out.println("开始监听...");
+                DatagramSocket socket =
+                        new DatagramSocket(54321);
 
-        while (true) {
+                byte[] buffer = new byte[1024];
 
-            DatagramPacket packet =
-                    new DatagramPacket(buffer, buffer.length);
+                System.out.println("开始监听...");
 
-            socket.receive(packet);
+                while (true) {
 
-            String msg = new String(
-                    packet.getData(),
-                    0,
-                    packet.getLength()
-            );
+                    DatagramPacket packet =
+                            new DatagramPacket(
+                                    buffer,
+                                    buffer.length
+                            );
 
-            String ip = packet.getAddress().getHostAddress();
+                    socket.receive(packet);
 
-            System.out.println(ip + " : " + msg);
-        }
+                    String ip =
+                            packet.getAddress()
+                                    .getHostAddress();
+
+                    String message =
+                            new String(
+                                    packet.getData(),
+                                    0,
+                                    packet.getLength()
+                            );
+
+                    if (message.equals("LINKDISK_DEVICE")) {
+
+                        listener.onDeviceFound(ip);
+                    }
+                }
+
+            } catch (Exception e) {
+
+                e.printStackTrace();
+            }
+
+        }).start();
     }
 }

@@ -17,7 +17,7 @@ public class UdpBroadcaster {
         DatagramPacket packet = new DatagramPacket(
                 data,
                 data.length,
-                InetAddress.getByName("255.255.255.255"),
+                InetAddress.getByName("172.20.10.255"),
                 54321
         );
 
