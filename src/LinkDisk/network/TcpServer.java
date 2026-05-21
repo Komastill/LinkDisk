@@ -1,12 +1,14 @@
 package LinkDisk.network;
 
 import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.FileOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.io.File;
 
 public class TcpServer {
+
     private static AuthManager authManager = new AuthManager();
     private static AuthCallback authCallback;
     private static ServerSocket serverSocket;
@@ -21,11 +23,10 @@ public class TcpServer {
         if (isRunning) {
             return;
         }
-        
+
         authCallback = callback;
         isRunning = true;
-        
-        // 创建接收文件目录
+
         new File(saveDir).mkdirs();
 
         new Thread(new Runnable() {
@@ -36,31 +37,22 @@ public class TcpServer {
                     System.out.println("TCP服务器已启动，端口：6000");
 
                     while (isRunning) {
+
                         Socket socket = serverSocket.accept();
-                        String clientIp = socket.getInetAddress().getHostAddress();
+
+                        String clientIp =
+                                socket.getInetAddress().getHostAddress();
+
                         System.out.println("收到连接请求来自：" + clientIp);
 
-                        // 检查是否已信任
-                        if (!authManager.isTrusted(clientIp)) {
-                            // 请求授权
-                            if (authCallback != null) {
-                                boolean authorized = authCallback.onAuthRequest(clientIp);
-                                if (authorized) {
-                                    authManager.addTrustedDevice(clientIp);
-                                    System.out.println("已授权设备：" + clientIp);
-                                    handleClient(socket, clientIp);
-                                } else {
-                                    System.out.println("拒绝设备连接：" + clientIp);
-                                    socket.close();
-                                }
-                            } else {
-                                socket.close();
+                        new Thread(new Runnable() {
+                            @Override
+                            public void run() {
+                                handleConnection(socket, clientIp);
                             }
-                        } else {
-                            System.out.println("信任设备已连接：" + clientIp);
-                            handleClient(socket, clientIp);
-                        }
+                        }).start();
                     }
+
                 } catch (Exception e) {
                     if (isRunning) {
                         e.printStackTrace();
@@ -69,9 +61,10 @@ public class TcpServer {
             }
         }).start();
     }
-    
+
     public static void stopServer() {
         isRunning = false;
+
         try {
             if (serverSocket != null && !serverSocket.isClosed()) {
                 serverSocket.close();
@@ -81,50 +74,144 @@ public class TcpServer {
         }
     }
 
-    private static void handleClient(Socket socket, String clientIp) {
-        try {
-            DataInputStream in = new DataInputStream(socket.getInputStream());
+    private static void handleConnection(Socket socket, String clientIp) {
 
-            // 接收文件数量
+        try {
+
+            DataInputStream in =
+                    new DataInputStream(socket.getInputStream());
+
+            DataOutputStream out =
+                    new DataOutputStream(socket.getOutputStream());
+
+            String command = in.readUTF();
+
+            boolean authorized = true;
+
+            if (!authManager.isTrusted(clientIp)) {
+
+                authorized = false;
+
+                if (authCallback != null) {
+                    authorized = authCallback.onAuthRequest(clientIp);
+                }
+
+                if (authorized) {
+                    authManager.addTrustedDevice(clientIp);
+                    System.out.println("已授权设备：" + clientIp);
+                } else {
+                    System.out.println("拒绝设备连接：" + clientIp);
+                }
+            } else {
+                System.out.println("信任设备已连接：" + clientIp);
+            }
+
+            if (!authorized) {
+                out.writeUTF("DENIED");
+                out.flush();
+                in.close();
+                out.close();
+                socket.close();
+                return;
+            }
+
+            out.writeUTF("OK");
+            out.flush();
+
+            if ("AUTH".equals(command)) {
+
+                System.out.println("设备 " + clientIp + " 连接授权完成");
+
+            } else if ("FILE".equals(command)) {
+
+                receiveFiles(in, clientIp);
+
+            } else {
+
+                System.out.println("未知请求类型：" + command);
+            }
+
+            in.close();
+            out.close();
+            socket.close();
+
+        } catch (Exception e) {
+            System.err.println("处理设备 " + clientIp + " 连接时出错：" + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private static void receiveFiles(DataInputStream in, String clientIp) {
+
+        try {
+
             int fileCount = in.readInt();
+
             System.out.println("从 " + clientIp + " 接收文件数量：" + fileCount);
 
-            // 循环接收文件
             for (int i = 0; i < fileCount; i++) {
-                // 文件名
+
                 String fileName = in.readUTF();
-                // 文件大小
+
                 long fileSize = in.readLong();
 
                 System.out.println("接收文件：" + fileName + " 大小：" + fileSize + " bytes");
 
-                // 保存文件，添加设备IP前缀避免重名
-                String saveFileName = saveDir + clientIp + "_" + fileName;
-                FileOutputStream out = new FileOutputStream(saveFileName);
+                File saveFile = new File(saveDir, fileName);
+
+                int count = 1;
+                String name = fileName;
+                String baseName = name;
+                String ext = "";
+
+                int dotIndex = name.lastIndexOf(".");
+
+                if (dotIndex != -1) {
+                    baseName = name.substring(0, dotIndex);
+                    ext = name.substring(dotIndex);
+                }
+
+                while (saveFile.exists()) {
+                    saveFile = new File(saveDir, baseName + "(" + count + ")" + ext);
+                    count++;
+                }
+
+                FileOutputStream fileOut =
+                        new FileOutputStream(saveFile);
 
                 byte[] buffer = new byte[8192];
+
                 long received = 0;
+
                 int len;
 
                 while (received < fileSize) {
-                    len = in.read(buffer, 0, (int) Math.min(buffer.length, fileSize - received));
+
+                    len = in.read(
+                            buffer,
+                            0,
+                            (int) Math.min(buffer.length, fileSize - received)
+                    );
+
                     if (len == -1) {
                         break;
                     }
-                    out.write(buffer, 0, len);
+
+                    fileOut.write(buffer, 0, len);
+
                     received += len;
                 }
 
-                out.close();
-                System.out.println(fileName + " 接收完成，保存为：" + saveFileName);
+                fileOut.close();
+
+                System.out.println(fileName + " 接收完成");
+                System.out.println("实际保存路径：" + saveFile.getAbsolutePath());
+                System.out.println("实际接收大小：" + received + " bytes");
             }
 
-            in.close();
-            socket.close();
             System.out.println("设备 " + clientIp + " 所有文件接收完成\n");
 
         } catch (Exception e) {
-            System.err.println("处理设备 " + clientIp + " 连接时出错：" + e.getMessage());
             e.printStackTrace();
         }
     }

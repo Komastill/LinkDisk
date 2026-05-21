@@ -1,7 +1,7 @@
 package LinkDisk.ui;
 
 import LinkDisk.network.*;
-
+import java.awt.Font;
 import javax.swing.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -19,11 +19,30 @@ public class MainFrame extends JFrame {
 
     private JProgressBar progressBar;
 
+    private JButton openFolderButton;
+    
+    private java.util.Set<String> connectedDevices = new java.util.HashSet<String>();
+    
+    private JButton connectButton;
+    
     private JList<String> deviceList;
 
     private DefaultListModel<String> deviceListModel;
 
+    private JButton addIpButton;
+    
     private File[] selectedFiles;
+    
+    private String displayText(String text) {
+        if (text == null) {
+            return "";
+        }
+        return text.replace(".", "\u2024");
+    }
+
+    private String displayIp(String ip) {
+        return displayText(ip);
+    }
     
     private TransferManager transferManager;
 
@@ -31,18 +50,190 @@ public class MainFrame extends JFrame {
 
         setTitle("LinkDisk");
 
-        setSize(600, 500);
+        setSize(850, 500);
 
         setLocationRelativeTo(null);
 
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
         setLayout(null);
+        Font tempFont = UIManager.getFont("TextField.font");
+
+        if (tempFont == null) {
+            tempFont = new Font(Font.DIALOG, Font.PLAIN, 16);
+        }
+
+        final Font font = tempFont.deriveFont(Font.PLAIN, 16f);
         
         // 初始化传输管理器
         transferManager = TransferManager.getInstance();
+
+        // 设备列表
+        deviceListModel = new DefaultListModel<String>();
+        deviceList = new JList<String>(deviceListModel);
+        deviceList.setFont(font);
+        deviceList.setCellRenderer(new DefaultListCellRenderer() {
+            @Override
+            public java.awt.Component getListCellRendererComponent(
+                    JList<?> list,
+                    Object value,
+                    int index,
+                    boolean isSelected,
+                    boolean cellHasFocus) {
+
+                JLabel label = (JLabel) super.getListCellRendererComponent(
+                        list,
+                        value,
+                        index,
+                        isSelected,
+                        cellHasFocus
+                );
+
+                String ip = String.valueOf(value);
+
+                if (connectedDevices.contains(ip)) {
+                    label.setText(displayIp(ip) + "  已连接");
+                } else {
+                    label.setText(displayIp(ip) + "  未连接");
+                }
+                label.setFont(font);
+
+                return label;
+            }
+        });
+        deviceList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        JScrollPane deviceScrollPane = new JScrollPane(deviceList);
+        deviceScrollPane.setBounds(30, 30, 300, 120);
+        add(deviceScrollPane);
+
+        // 信任设备管理按钮
+        trustManagerButton = new JButton("信任设备管理");
+        trustManagerButton.setFont(font);
+        trustManagerButton.setBounds(360, 30, 180, 40);
+        add(trustManagerButton);
+        connectButton = new JButton("连接设备");
+        connectButton.setFont(font);
+        connectButton.setBounds(560, 30, 140, 40);
+        add(connectButton);
+        addIpButton = new JButton("手动添加IP");
+        addIpButton.setFont(font);
+        addIpButton.setBounds(560, 80, 140, 40);
+        add(addIpButton);
         
-        // 启动TCP服务器（支持授权）
+        connectButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+
+                String ip = deviceList.getSelectedValue();
+
+                if (ip == null) {
+                    logArea.append("请先选择要连接的设备\n");
+                    return;
+                }
+
+                logArea.append("正在连接设备：" + displayIp(ip) + "\n");
+                
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+
+                        boolean success =
+                                TcpClient.connectDevice(ip);
+
+                        SwingUtilities.invokeLater(new Runnable() {
+                            @Override
+                            public void run() {
+
+                            	if (success) {
+                            	    connectedDevices.add(ip);
+                            	    deviceList.repaint();
+                            	    logArea.append("设备连接成功：" + displayIp(ip) + "\n");
+                            	} else {
+                            	    logArea.append("设备连接失败或被拒绝：" + displayIp(ip) + "\n");
+                            	}
+                            }
+                        });
+                    }
+                }).start();
+            }
+        });
+        
+        addIpButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+
+                String ip = JOptionPane.showInputDialog(
+                        MainFrame.this,
+                        "请输入目标设备 IP 地址：",
+                        "手动添加IP",
+                        JOptionPane.PLAIN_MESSAGE
+                );
+
+                if (ip == null) {
+                    return;
+                }
+
+                ip = ip.trim();
+
+                if (ip.length() == 0) {
+                    logArea.append("IP 地址不能为空\n");
+                    return;
+                }
+
+                if (!deviceListModel.contains(ip)) {
+                    deviceListModel.addElement(ip);
+                    logArea.append("已手动添加设备：" + displayIp(ip) + "\n");
+                } else {
+                    logArea.append("设备已存在：" + displayIp(ip) + "\n");
+                }
+            }
+        });
+
+        openFolderButton = new JButton("打开接收文件夹");
+        openFolderButton.setFont(font);
+        openFolderButton.setBounds(310, 170, 180, 40);
+        add(openFolderButton);
+        
+        openFolderButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                try {
+                    File folder = new File("received_files");
+
+                    if (!folder.exists()) {
+                        folder.mkdirs();
+                    }
+
+                    java.awt.Desktop.getDesktop().open(folder);
+
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                    logArea.append("打开接收文件夹失败\n");
+                }
+            }
+        });
+        
+        // 选择文件按钮
+        selectButton = new JButton("选择文件");
+        selectButton.setFont(font);
+        selectButton.setBounds(30, 170, 120, 40);
+        add(selectButton);
+
+        // 发送按钮
+        sendButton = new JButton("发送文件");
+        sendButton.setFont(font);
+        sendButton.setBounds(170, 170, 120, 40);
+        add(sendButton);
+
+        // 日志区域
+        logArea = new JTextArea();
+        logArea.setFont(font);
+        logArea.setEditable(false);
+        JScrollPane scrollPane = new JScrollPane(logArea);
+        scrollPane.setBounds(30, 230, 700, 180);
+        add(scrollPane);
+        
+     // 启动TCP服务器（支持授权）
         TcpServer.startServer(new TcpServer.AuthCallback() {
             @Override
             public boolean onAuthRequest(String ip) {
@@ -66,9 +257,9 @@ public class MainFrame extends JFrame {
                             result[0] = (option == JOptionPane.YES_OPTION);
                             
                             if (result[0]) {
-                                logArea.append("已授权设备：" + ip + "\n");
+                            	logArea.append("已授权设备：" + displayIp(ip) + "\n");
                             } else {
-                                logArea.append("拒绝设备连接：" + ip + "\n");
+                            	logArea.append("拒绝设备连接：" + displayIp(ip) + "\n");
                             }
                         }
                     });
@@ -79,39 +270,10 @@ public class MainFrame extends JFrame {
             }
         });
 
-        // 设备列表
-        deviceListModel = new DefaultListModel<String>();
-        deviceList = new JList<String>(deviceListModel);
-        deviceList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-        JScrollPane deviceScrollPane = new JScrollPane(deviceList);
-        deviceScrollPane.setBounds(30, 30, 200, 120);
-        add(deviceScrollPane);
-
-        // 信任设备管理按钮
-        trustManagerButton = new JButton("信任设备管理");
-        trustManagerButton.setBounds(250, 30, 120, 40);
-        add(trustManagerButton);
-
-        // 选择文件按钮
-        selectButton = new JButton("选择文件");
-        selectButton.setBounds(30, 170, 120, 40);
-        add(selectButton);
-
-        // 发送按钮
-        sendButton = new JButton("发送文件");
-        sendButton.setBounds(170, 170, 120, 40);
-        add(sendButton);
-
-        // 日志区域
-        logArea = new JTextArea();
-        logArea.setEditable(false);
-        JScrollPane scrollPane = new JScrollPane(logArea);
-        scrollPane.setBounds(30, 230, 520, 180);
-        add(scrollPane);
-
         // 进度条
         progressBar = new JProgressBar();
-        progressBar.setBounds(30, 420, 520, 25);
+        progressBar.setFont(font);
+        progressBar.setBounds(30, 420, 700, 25);
         progressBar.setMinimum(0);
         progressBar.setMaximum(100);
         progressBar.setValue(0);
@@ -129,27 +291,66 @@ public class MainFrame extends JFrame {
                     selectedFiles = fileChooser.getSelectedFiles();
                     logArea.append("已选择文件：\n");
                     for (File file : selectedFiles) {
-                        logArea.append("  - " + file.getName() + " (" + file.length() + " bytes)\n");
-                    }
+                    	logArea.append("  - " + displayText(file.getName()) + " (" + file.length() + " bytes)\n");                    }
                     logArea.append("\n");
                 }
             }
         });
         
-        // 信任设备管理
         trustManagerButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                java.util.List<String> trusted = new AuthManager().getAllTrustedDevices();
+
+                AuthManager authManager = new AuthManager();
+
+                java.util.List<String> trusted =
+                        authManager.getAllTrustedDevices();
+
                 if (trusted.isEmpty()) {
-                    JOptionPane.showMessageDialog(MainFrame.this, "暂无信任设备", "信任设备管理", JOptionPane.INFORMATION_MESSAGE);
-                } else {
-                    StringBuilder sb = new StringBuilder("信任设备列表：\n");
-                    for (String ip : trusted) {
-                        sb.append("  - ").append(ip).append("\n");
+
+                    JOptionPane.showMessageDialog(
+                            MainFrame.this,
+                            "暂无信任设备",
+                            "信任设备管理",
+                            JOptionPane.INFORMATION_MESSAGE
+                    );
+
+                    return;
+                }
+
+                String selectedIp = (String) JOptionPane.showInputDialog(
+                        MainFrame.this,
+                        "请选择要删除的信任设备：",
+                        "信任设备管理",
+                        JOptionPane.PLAIN_MESSAGE,
+                        null,
+                        trusted.toArray(),
+                        trusted.get(0)
+                );
+
+                if (selectedIp != null) {
+
+                    int confirm = JOptionPane.showConfirmDialog(
+                            MainFrame.this,
+                            "确定删除信任设备 " + selectedIp + " 吗？\n下次连接需要重新授权。",
+                            "确认删除",
+                            JOptionPane.YES_NO_OPTION
+                    );
+
+                    if (confirm == JOptionPane.YES_OPTION) {
+
+                        authManager.removeTrustedDevice(selectedIp);
+                        logArea.append(
+                                "已删除信任设备：" + displayIp(selectedIp) + "\n"
+                        );
+
+                        JOptionPane.showMessageDialog(
+                                MainFrame.this,
+                                "删除成功",
+                                "提示",
+                                JOptionPane.INFORMATION_MESSAGE
+                        );
                     }
-                    sb.append("\n可以在项目目录的 trusted_devices.dat 文件中手动删除");
-                    JOptionPane.showMessageDialog(MainFrame.this, sb.toString(), "信任设备管理", JOptionPane.INFORMATION_MESSAGE);
                 }
             }
         });
@@ -158,16 +359,32 @@ public class MainFrame extends JFrame {
         sendButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
+
                 if (selectedFiles == null || selectedFiles.length == 0) {
                     logArea.append("请先选择文件\n");
                     return;
                 }
-                java.util.List<String> selectedIps = deviceList.getSelectedValuesList();
+
+                java.util.List<String> selectedIps =
+                        deviceList.getSelectedValuesList();
+
                 if (selectedIps.isEmpty()) {
                     logArea.append("请先选择设备\n");
                     return;
                 }
-                
+
+                // 检查设备是否已经连接
+                for (String ip : selectedIps) {
+                    if (!connectedDevices.contains(ip)) {
+                        logArea.append(
+                                "设备尚未连接，请先点击【连接设备】：" 
+                                + displayIp(ip) 
+                                + "\n"
+                        );
+                        return;
+                    }
+                }
+
                 progressBar.setValue(0);
                 logArea.append("开始发送文件...\n");
                 
@@ -176,8 +393,7 @@ public class MainFrame extends JFrame {
                     for (File file : selectedFiles) {
                         TransferTask task = new TransferTask(ip, file.getName(), file.length(), "upload");
                         transferManager.addTask(task);
-                        logArea.append("添加任务：" + file.getName() + " -> " + ip + "\n");
-                    }
+                        logArea.append("添加任务：" + displayText(file.getName()) + " -> " + displayIp(ip) + "\n");                    }
                 }
                 
                 new Thread(new Runnable() {
@@ -187,31 +403,33 @@ public class MainFrame extends JFrame {
                             SwingUtilities.invokeLater(new Runnable() {
                                 @Override
                                 public void run() {
-                                    logArea.append("发送到设备：" + ip + "\n");
-                                }
+                                	logArea.append("发送到设备：" + displayIp(ip) + "\n");                                }
                             });
                             
-                            TcpClient.sendFiles(
-                                selectedFiles,
-                                ip,
-                                new ProgressListener() {
-                                    @Override
-                                    public void onProgress(int progress) {
-                                        SwingUtilities.invokeLater(new Runnable() {
-                                            @Override
-                                            public void run() {
-                                                progressBar.setValue(progress);
-                                            }
-                                        });
+                            boolean success = TcpClient.sendFiles(
+                                    selectedFiles,
+                                    ip,
+                                    new ProgressListener() {
+                                        @Override
+                                        public void onProgress(int progress) {
+                                            SwingUtilities.invokeLater(new Runnable() {
+                                                @Override
+                                                public void run() {
+                                                    progressBar.setValue(progress);
+                                                }
+                                            });
+                                        }
                                     }
-                                }
                             );
                             
                             SwingUtilities.invokeLater(new Runnable() {
                                 @Override
                                 public void run() {
-                                    logArea.append("设备 " + ip + " 文件发送完成\n");
-                                }
+                                	if (success) {
+                                	    logArea.append("设备 " + displayIp(ip) + " 文件发送完成\n");
+                                	} else {
+                                	    logArea.append("设备 " + displayIp(ip) + " 文件发送失败\n");
+                                	}                             }
                             });
                         }
                         
@@ -219,7 +437,7 @@ public class MainFrame extends JFrame {
                             @Override
                             public void run() {
                                 progressBar.setValue(100);
-                                logArea.append("所有文件发送完成\n");
+                                logArea.append("发送流程结束\n");
                             }
                         });
                     }
@@ -231,13 +449,13 @@ public class MainFrame extends JFrame {
         UdpListener.startListening(new DeviceFoundListener() {
             @Override
             public void onDeviceFound(String ip) {
+            	System.out.println("UI收到设备IP = [" + ip + "]");
                 SwingUtilities.invokeLater(new Runnable() {
                     @Override
                     public void run() {
                         if (!deviceListModel.contains(ip)) {
                             deviceListModel.addElement(ip);
-                            logArea.append("发现设备：" + ip + "\n");
-                        }
+                            logArea.append("发现设备：" + displayIp(ip) + "\n");                        }
                     }
                 });
             }
@@ -261,6 +479,15 @@ public class MainFrame extends JFrame {
     }
 
     public static void main(String[] args) {
-        new MainFrame();
+
+        System.setProperty("sun.java2d.metal", "false");
+        System.setProperty("sun.java2d.opengl", "false");
+
+        SwingUtilities.invokeLater(new Runnable() {
+            @Override
+            public void run() {
+                new MainFrame();
+            }
+        });
     }
 }

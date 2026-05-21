@@ -30,6 +30,7 @@ public class UdpListener {
                         listenSocket.receive(packet);
 
                         String ip = packet.getAddress().getHostAddress();
+                        System.out.println("UDP收到广播，来源IP = [" + ip + "]");
                         String message = new String(packet.getData(), 0, packet.getLength());
 
                         if ("LINKDISK_DEVICE".equals(message)) {
