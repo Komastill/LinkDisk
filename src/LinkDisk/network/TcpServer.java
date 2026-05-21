@@ -10,21 +10,57 @@ import java.io.File;
 public class TcpServer {
 
     private static AuthManager authManager = new AuthManager();
+
     private static AuthCallback authCallback;
+
+    private static ReceiveCallback receiveCallback;
+
     private static ServerSocket serverSocket;
+
     private static boolean isRunning = false;
+
     private static String saveDir = "received_files/";
 
     public interface AuthCallback {
         boolean onAuthRequest(String ip);
     }
 
+    public interface ReceiveCallback {
+        void onFileReceived(String clientIp, String fileName, String savePath, long fileSize);
+    }
+
+    private static String formatFileSize(long size) {
+        double value = size;
+
+        if (size < 1024) {
+            return size + " B";
+        }
+
+        value = value / 1024;
+        if (value < 1024) {
+            return String.format(java.util.Locale.US, "%.2f KB", value);
+        }
+
+        value = value / 1024;
+        if (value < 1024) {
+            return String.format(java.util.Locale.US, "%.2f MB", value);
+        }
+
+        value = value / 1024;
+        return String.format(java.util.Locale.US, "%.2f GB", value);
+    }
+
     public static void startServer(AuthCallback callback) {
+        startServer(callback, null);
+    }
+
+    public static void startServer(AuthCallback callback, ReceiveCallback receiveCallbackParam) {
         if (isRunning) {
             return;
         }
 
         authCallback = callback;
+        receiveCallback = receiveCallbackParam;
         isRunning = true;
 
         new File(saveDir).mkdirs();
@@ -115,18 +151,26 @@ public class TcpServer {
                 return;
             }
 
-            out.writeUTF("OK");
-            out.flush();
-
             if ("AUTH".equals(command)) {
+
+                out.writeUTF("OK");
+                out.writeUTF(UdpListener.getThisDeviceName());
+                out.writeUTF(UdpListener.getThisPlatform());
+                out.flush();
 
                 System.out.println("设备 " + clientIp + " 连接授权完成");
 
             } else if ("FILE".equals(command)) {
 
+                out.writeUTF("OK");
+                out.flush();
+
                 receiveFiles(in, clientIp);
 
             } else {
+
+                out.writeUTF("DENIED");
+                out.flush();
 
                 System.out.println("未知请求类型：" + command);
             }
@@ -155,7 +199,7 @@ public class TcpServer {
 
                 long fileSize = in.readLong();
 
-                System.out.println("接收文件：" + fileName + " 大小：" + fileSize + " bytes");
+                System.out.println("接收文件：" + fileName + " 大小：" + formatFileSize(fileSize));
 
                 File saveFile = new File(saveDir, fileName);
 
@@ -206,7 +250,16 @@ public class TcpServer {
 
                 System.out.println(fileName + " 接收完成");
                 System.out.println("实际保存路径：" + saveFile.getAbsolutePath());
-                System.out.println("实际接收大小：" + received + " bytes");
+                System.out.println("实际接收大小：" + formatFileSize(received));
+
+                if (receiveCallback != null) {
+                    receiveCallback.onFileReceived(
+                            clientIp,
+                            fileName,
+                            saveFile.getAbsolutePath(),
+                            received
+                    );
+                }
             }
 
             System.out.println("设备 " + clientIp + " 所有文件接收完成\n");

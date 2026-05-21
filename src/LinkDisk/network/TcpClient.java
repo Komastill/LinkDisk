@@ -9,33 +9,77 @@ import java.net.Socket;
 public class TcpClient {
 
     // 只请求连接/授权，不发送文件
-    public static boolean connectDevice(String ip) {
-        try {
-            Socket socket = new Socket(ip, 6000);
+	public static ConnectResult connectDevice(String ip) {
+	    try {
+	        Socket socket = new Socket(ip, 6000);
 
-            DataOutputStream out =
-                    new DataOutputStream(socket.getOutputStream());
+	        DataOutputStream out =
+	                new DataOutputStream(socket.getOutputStream());
 
-            DataInputStream in =
-                    new DataInputStream(socket.getInputStream());
+	        DataInputStream in =
+	                new DataInputStream(socket.getInputStream());
 
-            out.writeUTF("AUTH");
-            out.flush();
+	        out.writeUTF("AUTH");
+	        out.flush();
 
-            String result = in.readUTF();
+	        String result = in.readUTF();
 
-            in.close();
-            out.close();
-            socket.close();
+	        if (!"OK".equals(result)) {
+	            in.close();
+	            out.close();
+	            socket.close();
 
-            return "OK".equals(result);
+	            return new ConnectResult(false, null, null);
+	        }
 
-        } catch (Exception e) {
-            e.printStackTrace();
-            return false;
-        }
-    }
+	        String deviceName = in.readUTF();
+	        String platform = in.readUTF();
 
+	        in.close();
+	        out.close();
+	        socket.close();
+
+	        return new ConnectResult(true, deviceName, platform);
+
+	    } catch (Exception e) {
+	        e.printStackTrace();
+	        return new ConnectResult(false, null, null);
+	    }
+	}
+
+	public static class ConnectResult {
+	    public boolean success;
+	    public String deviceName;
+	    public String platform;
+
+	    public ConnectResult(boolean success, String deviceName, String platform) {
+	        this.success = success;
+	        this.deviceName = deviceName;
+	        this.platform = platform;
+	    }
+	}
+
+	private static String formatFileSize(long size) {
+	    double value = size;
+
+	    if (size < 1024) {
+	        return size + " B";
+	    }
+
+	    value = value / 1024;
+	    if (value < 1024) {
+	        return String.format(java.util.Locale.US, "%.2f KB", value);
+	    }
+
+	    value = value / 1024;
+	    if (value < 1024) {
+	        return String.format(java.util.Locale.US, "%.2f MB", value);
+	    }
+
+	    value = value / 1024;
+	    return String.format(java.util.Locale.US, "%.2f GB", value);
+	}
+    
     // 正式发送文件
     public static boolean sendFiles(
             File[] files,
@@ -85,8 +129,8 @@ public class TcpClient {
 
                 System.out.println("准备发送文件：" + file.getAbsolutePath());
                 System.out.println("发送文件名：" + file.getName());
-                System.out.println("发送文件大小：" + file.length());
-
+                System.out.println("发送文件大小：" + formatFileSize(file.length()));
+                
                 out.writeUTF(file.getName());
 
                 out.writeLong(file.length());
