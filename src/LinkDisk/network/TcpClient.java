@@ -4,115 +4,163 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 
 public class TcpClient {
 
-    // 只请求连接/授权，不发送文件
-	public static ConnectResult connectDevice(String ip) {
-	    try {
-	        Socket socket = new Socket(ip, 6000);
+    private static final int TCP_PORT = 6000;
 
-	        DataOutputStream out =
-	                new DataOutputStream(socket.getOutputStream());
+    private static final int CONNECT_TIMEOUT = 5000;
 
-	        DataInputStream in =
-	                new DataInputStream(socket.getInputStream());
+    private static final int READ_TIMEOUT = 15000;
 
-	        out.writeUTF("AUTH");
-	        out.flush();
+    public static class ConnectResult {
+        public boolean success;
+        public String deviceName;
+        public String platform;
+        public String message;
 
-	        String result = in.readUTF();
+        public ConnectResult(boolean success, String deviceName, String platform, String message) {
+            this.success = success;
+            this.deviceName = deviceName;
+            this.platform = platform;
+            this.message = message;
+        }
+    }
 
-	        if (!"OK".equals(result)) {
-	            in.close();
-	            out.close();
-	            socket.close();
+    public static class SendResult {
+        public boolean success;
+        public String message;
 
-	            return new ConnectResult(false, null, null);
-	        }
+        public SendResult(boolean success, String message) {
+            this.success = success;
+            this.message = message;
+        }
+    }
 
-	        String deviceName = in.readUTF();
-	        String platform = in.readUTF();
+    public static ConnectResult connectDevice(String ip) {
 
-	        in.close();
-	        out.close();
-	        socket.close();
+        Socket socket = null;
+        DataOutputStream out = null;
+        DataInputStream in = null;
 
-	        return new ConnectResult(true, deviceName, platform);
+        try {
+            socket = new Socket();
 
-	    } catch (Exception e) {
-	        e.printStackTrace();
-	        return new ConnectResult(false, null, null);
-	    }
-	}
+            socket.connect(
+                    new InetSocketAddress(ip, TCP_PORT),
+                    CONNECT_TIMEOUT
+            );
 
-	public static class ConnectResult {
-	    public boolean success;
-	    public String deviceName;
-	    public String platform;
+            socket.setSoTimeout(READ_TIMEOUT);
 
-	    public ConnectResult(boolean success, String deviceName, String platform) {
-	        this.success = success;
-	        this.deviceName = deviceName;
-	        this.platform = platform;
-	    }
-	}
+            out = new DataOutputStream(socket.getOutputStream());
 
-	private static String formatFileSize(long size) {
-	    double value = size;
+            in = new DataInputStream(socket.getInputStream());
 
-	    if (size < 1024) {
-	        return size + " B";
-	    }
+            out.writeUTF("AUTH");
 
-	    value = value / 1024;
-	    if (value < 1024) {
-	        return String.format(java.util.Locale.US, "%.2f KB", value);
-	    }
+            out.flush();
 
-	    value = value / 1024;
-	    if (value < 1024) {
-	        return String.format(java.util.Locale.US, "%.2f MB", value);
-	    }
+            String result = in.readUTF();
 
-	    value = value / 1024;
-	    return String.format(java.util.Locale.US, "%.2f GB", value);
-	}
-    
-    // 正式发送文件
-    public static boolean sendFiles(
+            if (!"OK".equals(result)) {
+                return new ConnectResult(
+                        false,
+                        null,
+                        null,
+                        "对方拒绝连接"
+                );
+            }
+
+            String deviceName = in.readUTF();
+
+            String platform = in.readUTF();
+
+            return new ConnectResult(
+                    true,
+                    deviceName,
+                    platform,
+                    "连接成功"
+            );
+
+        } catch (java.net.SocketTimeoutException e) {
+
+            return new ConnectResult(
+                    false,
+                    null,
+                    null,
+                    "连接超时：目标设备无响应"
+            );
+
+        } catch (java.net.ConnectException e) {
+
+            return new ConnectResult(
+                    false,
+                    null,
+                    null,
+                    "连接失败：目标设备未启动 LinkDisk 或端口未开放"
+            );
+
+        } catch (Exception e) {
+
+            e.printStackTrace();
+
+            return new ConnectResult(
+                    false,
+                    null,
+                    null,
+                    "连接失败：" + e.getMessage()
+            );
+
+        } finally {
+
+            closeQuietly(in);
+
+            closeQuietly(out);
+
+            closeQuietly(socket);
+        }
+    }
+
+    public static SendResult sendFiles(
             File[] files,
             String ip,
             ProgressListener listener
     ) {
 
+        Socket socket = null;
+        DataOutputStream out = null;
+        DataInputStream in = null;
+
         try {
+            socket = new Socket();
 
-            Socket socket = new Socket(ip, 6000);
+            socket.connect(
+                    new InetSocketAddress(ip, TCP_PORT),
+                    CONNECT_TIMEOUT
+            );
 
-            DataOutputStream out =
-                    new DataOutputStream(socket.getOutputStream());
+            socket.setSoTimeout(READ_TIMEOUT);
 
-            DataInputStream in =
-                    new DataInputStream(socket.getInputStream());
+            out = new DataOutputStream(socket.getOutputStream());
 
-            // 告诉服务端：这次连接是文件传输
+            in = new DataInputStream(socket.getInputStream());
+
             out.writeUTF("FILE");
+
             out.flush();
 
-            // 等待服务端授权结果
             String result = in.readUTF();
 
             if (!"OK".equals(result)) {
-                System.out.println("对方拒绝连接，文件未发送");
-                in.close();
-                out.close();
-                socket.close();
-                return false;
+                return new SendResult(
+                        false,
+                        "对方拒绝连接，文件未发送"
+                );
             }
 
-            // 发送文件数量
             out.writeInt(files.length);
 
             long totalBytes = 0;
@@ -125,52 +173,147 @@ public class TcpClient {
 
             byte[] buffer = new byte[8192];
 
-            for (File file : files) {
+            for (int i = 0; i < files.length; i++) {
+
+                File file = files[i];
 
                 System.out.println("准备发送文件：" + file.getAbsolutePath());
+
                 System.out.println("发送文件名：" + file.getName());
+
                 System.out.println("发送文件大小：" + formatFileSize(file.length()));
-                
+
+                listener.onFileStart(i, file.getName());
+
                 out.writeUTF(file.getName());
 
                 out.writeLong(file.length());
 
-                FileInputStream fileIn = new FileInputStream(file);
+                FileInputStream fileIn = null;
 
-                int len;
+                try {
+                    fileIn = new FileInputStream(file);
 
-                while ((len = fileIn.read(buffer)) != -1) {
+                    int len;
 
-                    out.write(buffer, 0, len);
+                    long fileSentBytes = 0;
 
-                    sentBytes += len;
+                    while ((len = fileIn.read(buffer)) != -1) {
 
-                    int progress;
+                        out.write(buffer, 0, len);
 
-                    if (totalBytes == 0) {
-                        progress = 100;
-                    } else {
-                        progress = (int) ((sentBytes * 100) / totalBytes);
+                        sentBytes += len;
+
+                        fileSentBytes += len;
+
+                        int totalProgress;
+
+                        if (totalBytes == 0) {
+                            totalProgress = 100;
+                        } else {
+                            totalProgress = (int) ((sentBytes * 100) / totalBytes);
+                        }
+
+                        int fileProgress;
+
+                        if (file.length() == 0) {
+                            fileProgress = 100;
+                        } else {
+                            fileProgress = (int) ((fileSentBytes * 100) / file.length());
+                        }
+
+                        listener.onTotalProgress(totalProgress);
+
+                        listener.onFileProgress(i, file.getName(), fileProgress);
                     }
 
-                    listener.onProgress(progress);
+                } finally {
+                    closeQuietly(fileIn);
                 }
 
-                fileIn.close();
+                listener.onFileComplete(i, file.getName());
             }
 
-            out.close();
-            in.close();
-            socket.close();
+            out.flush();
 
             System.out.println("全部文件发送完成");
 
-            return true;
+            return new SendResult(
+                    true,
+                    "文件发送完成"
+            );
+
+        } catch (java.net.SocketTimeoutException e) {
+
+            return new SendResult(
+                    false,
+                    "发送失败：连接超时或对方无响应"
+            );
+
+        } catch (java.net.ConnectException e) {
+
+            return new SendResult(
+                    false,
+                    "发送失败：目标设备未启动 LinkDisk 或端口未开放"
+            );
 
         } catch (Exception e) {
 
             e.printStackTrace();
-            return false;
+
+            return new SendResult(
+                    false,
+                    "发送失败：" + e.getMessage()
+            );
+
+        } finally {
+
+            closeQuietly(in);
+
+            closeQuietly(out);
+
+            closeQuietly(socket);
+        }
+    }
+
+    private static String formatFileSize(long size) {
+        double value = size;
+
+        if (size < 1000) {
+            return size + " B";
+        }
+
+        value = value / 1000;
+        if (value < 1000) {
+            return String.format(java.util.Locale.US, "%.2f KB", value);
+        }
+
+        value = value / 1000;
+        if (value < 1000) {
+            return String.format(java.util.Locale.US, "%.2f MB", value);
+        }
+
+        value = value / 1000;
+        return String.format(java.util.Locale.US, "%.2f GB", value);
+    }
+
+    private static void closeQuietly(java.io.Closeable closeable) {
+        try {
+            if (closeable != null) {
+                closeable.close();
+            }
+        } catch (Exception e) {
+            // 忽略关闭异常
+        }
+    }
+
+    private static void closeQuietly(Socket socket) {
+        try {
+            if (socket != null) {
+                socket.close();
+            }
+        } catch (Exception e) {
+            // 忽略关闭异常
         }
     }
 }

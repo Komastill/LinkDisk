@@ -26,27 +26,49 @@ public class TcpServer {
     }
 
     public interface ReceiveCallback {
-        void onFileReceived(String clientIp, String fileName, String savePath, long fileSize);
+
+        void onFileReceiveStart(
+                String clientIp,
+                String fileName,
+                String savePath,
+                long fileSize
+        );
+
+        void onFileReceiveProgress(
+                String clientIp,
+                String fileName,
+                String savePath,
+                long fileSize,
+                long receivedBytes,
+                int progress
+        );
+
+        void onFileReceived(
+                String clientIp,
+                String fileName,
+                String savePath,
+                long fileSize
+        );
     }
 
     private static String formatFileSize(long size) {
         double value = size;
 
-        if (size < 1024) {
+        if (size < 1000) {
             return size + " B";
         }
 
-        value = value / 1024;
-        if (value < 1024) {
+        value = value / 1000;
+        if (value < 1000) {
             return String.format(java.util.Locale.US, "%.2f KB", value);
         }
 
-        value = value / 1024;
-        if (value < 1024) {
+        value = value / 1000;
+        if (value < 1000) {
             return String.format(java.util.Locale.US, "%.2f MB", value);
         }
 
-        value = value / 1024;
+        value = value / 1000;
         return String.format(java.util.Locale.US, "%.2f GB", value);
     }
 
@@ -220,6 +242,17 @@ public class TcpServer {
                     count++;
                 }
 
+                String savePath = saveFile.getAbsolutePath();
+
+                if (receiveCallback != null) {
+                    receiveCallback.onFileReceiveStart(
+                            clientIp,
+                            fileName,
+                            savePath,
+                            fileSize
+                    );
+                }
+
                 FileOutputStream fileOut =
                         new FileOutputStream(saveFile);
 
@@ -228,6 +261,8 @@ public class TcpServer {
                 long received = 0;
 
                 int len;
+
+                int lastProgress = -1;
 
                 while (received < fileSize) {
 
@@ -244,6 +279,29 @@ public class TcpServer {
                     fileOut.write(buffer, 0, len);
 
                     received += len;
+
+                    int progress;
+
+                    if (fileSize == 0) {
+                        progress = 100;
+                    } else {
+                        progress = (int) ((received * 100) / fileSize);
+                    }
+
+                    if (progress != lastProgress) {
+                        lastProgress = progress;
+
+                        if (receiveCallback != null) {
+                            receiveCallback.onFileReceiveProgress(
+                                    clientIp,
+                                    fileName,
+                                    savePath,
+                                    fileSize,
+                                    received,
+                                    progress
+                            );
+                        }
+                    }
                 }
 
                 fileOut.close();
