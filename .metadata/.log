@@ -67,3 +67,42 @@ Command-line arguments:  -os macosx -ws cocoa -arch x86_64 -product org.eclipse.
 
 !ENTRY ch.qos.logback.classic 1 0 2026-05-09 14:24:56.524
 !MESSAGE Logback config file: /Users/cxr15803959066/Desktop/2026Lessons/SoftwareEngineering/LinkDisk/.metadata/.plugins/org.eclipse.m2e.logback/logback.2.7.101.20251017-1242.xml
+!SESSION 2026-05-26 13:40:00.113 -----------------------------------------------
+eclipse.buildId=4.39.0.20260305-0817
+java.version=21.0.10
+java.vendor=Eclipse Adoptium
+BootLoader constants: OS=macosx, ARCH=x86_64, WS=cocoa, NL=zh_CN_#Hans
+Framework arguments:  -product org.eclipse.epp.package.jee.product -keyring /Users/cxr15803959066/.eclipse_keyring
+Command-line arguments:  -os macosx -ws cocoa -arch x86_64 -product org.eclipse.epp.package.jee.product -keyring /Users/cxr15803959066/.eclipse_keyring
+
+!ENTRY ch.qos.logback.classic 1 0 2026-05-26 13:40:05.373
+!MESSAGE Activated before the state location was initialized. Retry after the state location is initialized.
+
+!ENTRY ch.qos.logback.classic 1 0 2026-05-26 13:41:01.456
+!MESSAGE Logback config file: /Users/cxr15803959066/Desktop/2026Lessons/SoftwareEngineering/LinkDisk/.metadata/.plugins/org.eclipse.m2e.logback/logback.2.7.101.20251017-1242.xml
+!SESSION 2026-05-26 13:52:36.161 -----------------------------------------------
+eclipse.buildId=4.39.0.20260305-0817
+java.version=21.0.10
+java.vendor=Eclipse Adoptium
+BootLoader constants: OS=macosx, ARCH=x86_64, WS=cocoa, NL=zh_CN_#Hans
+Framework arguments:  -product org.eclipse.epp.package.jee.product -keyring /Users/cxr15803959066/.eclipse_keyring
+Command-line arguments:  -os macosx -ws cocoa -arch x86_64 -product org.eclipse.epp.package.jee.product -keyring /Users/cxr15803959066/.eclipse_keyring
+
+!ENTRY ch.qos.logback.classic 1 0 2026-05-26 13:52:40.697
+!MESSAGE Activated before the state location was initialized. Retry after the state location is initialized.
+
+!ENTRY ch.qos.logback.classic 1 0 2026-05-26 13:52:47.668
+!MESSAGE Logback config file: /Users/cxr15803959066/Desktop/2026Lessons/SoftwareEngineering/LinkDisk/.metadata/.plugins/org.eclipse.m2e.logback/logback.2.7.101.20251017-1242.xml
+!SESSION 2026-05-26 14:01:00.882 -----------------------------------------------
+eclipse.buildId=4.39.0.20260305-0817
+java.version=21.0.10
+java.vendor=Eclipse Adoptium
+BootLoader constants: OS=macosx, ARCH=x86_64, WS=cocoa, NL=zh_CN_#Hans
+Framework arguments:  -product org.eclipse.epp.package.jee.product -keyring /Users/cxr15803959066/.eclipse_keyring
+Command-line arguments:  -os macosx -ws cocoa -arch x86_64 -product org.eclipse.epp.package.jee.product -keyring /Users/cxr15803959066/.eclipse_keyring
+
+!ENTRY ch.qos.logback.classic 1 0 2026-05-26 14:01:05.159
+!MESSAGE Activated before the state location was initialized. Retry after the state location is initialized.
+
+!ENTRY ch.qos.logback.classic 1 0 2026-05-26 14:01:12.244
+!MESSAGE Logback config file: /Users/cxr15803959066/Desktop/2026Lessons/SoftwareEngineering/LinkDisk/.metadata/.plugins/org.eclipse.m2e.logback/logback.2.7.101.20251017-1242.xml
