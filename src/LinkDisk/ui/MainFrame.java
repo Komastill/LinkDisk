@@ -11,7 +11,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
-
+import LinkDisk.model.TransferFileItem;
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.DefaultListModel;
 import javax.swing.JFileChooser;
@@ -37,8 +37,11 @@ public class MainFrame extends JFrame {
     private JPanel contentPanel;
     private CardLayout cardLayout;
 
-    private File[] selectedFiles;
-
+    private TransferFileItem[] selectedItems;
+    
+    private LinkedHashMap<String, File> selectedRootMap =
+            new LinkedHashMap<String, File>();
+    
     private TransferManager transferManager;
 
     private Set<String> connectedDevices = new HashSet<String>();
@@ -84,7 +87,97 @@ public class MainFrame extends JFrame {
         value = value / 1000;
         return String.format(java.util.Locale.US, "%.2f GB", value);
     }
+    
+    private void collectTransferItems(
+            File root,
+            File current,
+            LinkedHashMap<String, TransferFileItem> itemMap
+    ) {
+        if (current == null || !current.exists()) {
+            return;
+        }
 
+        if (current.isFile()) {
+
+            String relativePath;
+
+            if (root.isFile()) {
+                relativePath = root.getName();
+            } else {
+                String childPath =
+                        root.toPath()
+                                .relativize(current.toPath())
+                                .toString()
+                                .replace(File.separatorChar, '/');
+
+                relativePath = root.getName() + "/" + childPath;
+            }
+
+            itemMap.put(
+                    current.getAbsolutePath(),
+                    new TransferFileItem(current, relativePath)
+            );
+
+            return;
+        }
+
+        File[] children = current.listFiles();
+
+        if (children == null) {
+            return;
+        }
+
+        for (File child : children) {
+            collectTransferItems(root, child, itemMap);
+        }
+    }
+
+    private TransferFileItem[] buildTransferItems(File[] selectedRoots) {
+
+        LinkedHashMap<String, TransferFileItem> itemMap =
+                new LinkedHashMap<String, TransferFileItem>();
+
+        if (selectedItems != null) {
+            for (TransferFileItem item : selectedItems) {
+                itemMap.put(
+                        item.getSourceFile().getAbsolutePath(),
+                        item
+                );
+            }
+        }
+
+        for (File root : selectedRoots) {
+            collectTransferItems(root, root, itemMap);
+        }
+
+        return itemMap.values().toArray(new TransferFileItem[0]);
+    }
+
+    private int countFilesInRoot(File current) {
+
+        if (current == null || !current.exists()) {
+            return 0;
+        }
+
+        if (current.isFile()) {
+            return 1;
+        }
+
+        File[] children = current.listFiles();
+
+        if (children == null) {
+            return 0;
+        }
+
+        int count = 0;
+
+        for (File child : children) {
+            count += countFilesInRoot(child);
+        }
+
+        return count;
+    }
+    
     private boolean isTrustedDevice(String ip) {
         try {
             AuthManager authManager = new AuthManager();
@@ -145,25 +238,45 @@ public class MainFrame extends JFrame {
     }
 
     private void updateSelectedFilesDisplay() {
-        if (selectedFiles == null || selectedFiles.length == 0) {
+
+        if (selectedRootMap == null || selectedRootMap.isEmpty()) {
             transferPanel.clearSelectedFilesText();
             return;
         }
 
         StringBuilder sb = new StringBuilder();
 
-        for (int i = 0; i < selectedFiles.length; i++) {
-            File file = selectedFiles[i];
+        int index = 1;
 
-            sb.append(i + 1)
-              .append(". ")
-              .append(displayText(file.getName()))
-              .append("  ")
-              .append(displayText(formatFileSize(file.length())));
+        for (File root : selectedRootMap.values()) {
 
-            if (i < selectedFiles.length - 1) {
-                sb.append("\n");
+            sb.append(index)
+              .append(". ");
+
+            if (root.isDirectory()) {
+
+                int fileCount = countFilesInRoot(root);
+
+                sb.append(displayText(root.getName()))
+                  .append("  [文件夹]  共 ")
+                  .append(fileCount)
+                  .append(" 个文件");
+
+            } else {
+
+                sb.append(displayText(root.getName()))
+                  .append("  ")
+                  .append(displayText(formatFileSize(root.length())));
             }
+
+            sb.append("\n");
+
+            index++;
+        }
+
+        if (selectedItems != null && selectedItems.length > 0) {
+            sb.append("\n实际待发送文件数：")
+              .append(selectedItems.length);
         }
 
         transferPanel.setSelectedFilesText(sb.toString());
@@ -224,6 +337,7 @@ public class MainFrame extends JFrame {
         transferPanel = new Transferring(font);
 
         settingsPanel = new Setting(font);
+        settingsPanel.setReceivePathText(AppSettings.getReceiveDir());
 
         cardLayout = new CardLayout();
 
@@ -309,6 +423,8 @@ public class MainFrame extends JFrame {
     private void bindSettingsActions() {
 
         settingsPanel.getTrustManagerButton().addActionListener(e -> manageTrustedDevices());
+
+        settingsPanel.getChooseReceiveFolderButton().addActionListener(e -> chooseReceiveFolder());
 
         settingsPanel.getClearLogButton().addActionListener(e -> clearStatusMessage());
     }
@@ -494,39 +610,36 @@ public class MainFrame extends JFrame {
 
         fileChooser.setMultiSelectionEnabled(true);
 
-        fileChooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
+        fileChooser.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
 
         int result = fileChooser.showOpenDialog(MainFrame.this);
 
         if (result == JFileChooser.APPROVE_OPTION) {
 
-            File[] newFiles = fileChooser.getSelectedFiles();
+        	File[] selectedRoots = fileChooser.getSelectedFiles();
 
-            LinkedHashMap<String, File> fileMap =
-                    new LinkedHashMap<String, File>();
+        	for (File root : selectedRoots) {
+        	    selectedRootMap.put(root.getAbsolutePath(), root);
+        	}
 
-            if (selectedFiles != null) {
-                for (File file : selectedFiles) {
-                    fileMap.put(file.getAbsolutePath(), file);
-                }
-            }
+        	selectedItems = buildTransferItems(
+        	        selectedRootMap.values().toArray(new File[0])
+        	);
 
-            for (File file : newFiles) {
-                fileMap.put(file.getAbsolutePath(), file);
-            }
+        	updateSelectedFilesDisplay();
 
-            selectedFiles = fileMap.values().toArray(new File[0]);
-
-            updateSelectedFilesDisplay();
-
-            showTransferStatus("当前已选择 " + selectedFiles.length + " 个文件。");
+        	if (selectedItems.length == 0) {
+        	    showTransferStatus("未发现可发送文件。空文件夹暂不传输。");
+        	} else {
+        	    showTransferStatus("当前实际待发送 " + selectedItems.length + " 个文件。");
+        	}
         }
     }
 
     private void sendFiles() {
 
-        if (selectedFiles == null || selectedFiles.length == 0) {
-            showTransferStatus("请先选择文件。");
+        if (selectedItems == null || selectedItems.length == 0) {
+            showTransferStatus("请先选择文件或文件夹。");
             return;
         }
 
@@ -548,30 +661,35 @@ public class MainFrame extends JFrame {
             }
         }
 
-        File[] filesToSend = selectedFiles.clone();
+        TransferFileItem[] itemsToSend = selectedItems.clone();
 
         transferPanel.setProgress(0);
 
-        showTransferStatus("开始发送文件，共 " + filesToSend.length + " 个。");
+        showTransferStatus("开始发送文件，共 " + itemsToSend.length + " 个。");
 
         Map<String, Integer> rowIndexMap =
                 new HashMap<String, Integer>();
 
         for (String ip : selectedIps) {
-            for (int i = 0; i < filesToSend.length; i++) {
+            for (int i = 0; i < itemsToSend.length; i++) {
 
-                File file = filesToSend[i];
+                TransferFileItem item = itemsToSend[i];
 
                 TransferTask task =
-                        new TransferTask(ip, file.getName(), file.length(), "upload");
+                        new TransferTask(
+                                ip,
+                                item.getRelativePath(),
+                                item.getSize(),
+                                "upload"
+                        );
 
                 transferManager.addTask(task);
 
                 int rowIndex = addTransferRow(
                         "发送",
-                        file.getName(),
+                        item.getRelativePath(),
                         ip,
-                        file.length(),
+                        item.getSize(),
                         "等待",
                         0
                 );
@@ -594,7 +712,7 @@ public class MainFrame extends JFrame {
                     });
 
                     TcpClient.SendResult sendResult = TcpClient.sendFiles(
-                            filesToSend,
+                            itemsToSend,
                             ip,
                             new ProgressListener() {
 
@@ -624,7 +742,11 @@ public class MainFrame extends JFrame {
                                 }
 
                                 @Override
-                                public void onFileProgress(int fileIndex, String fileName, int progress) {
+                                public void onFileProgress(
+                                        int fileIndex,
+                                        String fileName,
+                                        int progress
+                                ) {
                                     SwingUtilities.invokeLater(new Runnable() {
                                         @Override
                                         public void run() {
@@ -662,7 +784,7 @@ public class MainFrame extends JFrame {
                             if (sendResult.success) {
                                 showTransferStatus("设备 " + displayIp(ip) + " 文件发送完成。");
                             } else {
-                                for (int i = 0; i < filesToSend.length; i++) {
+                                for (int i = 0; i < itemsToSend.length; i++) {
                                     Integer rowIndex = rowIndexMap.get(ip + "|" + i);
 
                                     if (rowIndex != null) {
@@ -687,7 +809,7 @@ public class MainFrame extends JFrame {
     private void openReceiveFolder() {
 
         try {
-            File folder = new File("received_files");
+            File folder = new File(AppSettings.getReceiveDir());
 
             if (!folder.exists()) {
                 folder.mkdirs();
@@ -703,7 +825,9 @@ public class MainFrame extends JFrame {
 
     private void resetSelectedFiles() {
 
-        selectedFiles = null;
+        selectedItems = null;
+
+        selectedRootMap.clear();
 
         transferPanel.setProgress(0);
 
@@ -821,6 +945,35 @@ public class MainFrame extends JFrame {
 
                 showSettingsStatus("已删除信任设备：" + displayIp(selectedIp));
             }
+        }
+    }
+
+
+    private void chooseReceiveFolder() {
+
+        JFileChooser chooser = new JFileChooser();
+
+        chooser.setDialogTitle("选择接收文件保存目录");
+
+        chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+
+        File currentFolder = new File(AppSettings.getReceiveDir());
+
+        if (currentFolder.exists()) {
+            chooser.setCurrentDirectory(currentFolder);
+        }
+
+        int result = chooser.showOpenDialog(MainFrame.this);
+
+        if (result == JFileChooser.APPROVE_OPTION) {
+
+            File selectedFolder = chooser.getSelectedFile();
+
+            AppSettings.setReceiveDir(selectedFolder.getAbsolutePath());
+
+            settingsPanel.setReceivePathText(AppSettings.getReceiveDir());
+
+            showSettingsStatus("接收目录已更新：" + AppSettings.getReceiveDir());
         }
     }
 

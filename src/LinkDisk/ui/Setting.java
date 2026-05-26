@@ -14,7 +14,10 @@ import javax.swing.JPanel;
 public class Setting extends JPanel {
 
     private JButton trustManagerButton;
+    private JButton chooseReceiveFolderButton;
     private JButton clearLogButton;
+
+    private JLabel receivePathLabel;
 
     private JLabel statusLabel;
 
@@ -38,7 +41,7 @@ public class Setting extends JPanel {
         titleLabel.setFont(font.deriveFont(Font.BOLD, 26f));
         titleLabel.setForeground(TEXT);
 
-        JLabel subtitleLabel = new JLabel("管理信任设备和系统状态");
+        JLabel subtitleLabel = new JLabel("管理信任设备、接收目录和系统状态");
         subtitleLabel.setFont(font.deriveFont(Font.PLAIN, 15f));
         subtitleLabel.setForeground(SUBTEXT);
         subtitleLabel.setBorder(BorderFactory.createEmptyBorder(8, 0, 0, 0));
@@ -55,7 +58,7 @@ public class Setting extends JPanel {
                 BorderFactory.createEmptyBorder(22, 22, 22, 22)
         ));
 
-        JLabel sectionTitle = new JLabel("安全与信任");
+        JLabel sectionTitle = new JLabel("安全与存储");
         sectionTitle.setFont(font.deriveFont(Font.BOLD, 18f));
         sectionTitle.setForeground(TEXT);
 
@@ -63,10 +66,23 @@ public class Setting extends JPanel {
         buttonPanel.setOpaque(false);
 
         trustManagerButton = createActionButton("管理信任设备", font, true, 170);
+        chooseReceiveFolderButton = createActionButton("选择接收目录", font, false, 170);
         clearLogButton = createActionButton("清空状态提示", font, false, 170);
 
         buttonPanel.add(trustManagerButton);
+        buttonPanel.add(chooseReceiveFolderButton);
         buttonPanel.add(clearLogButton);
+
+        receivePathLabel = new JLabel("当前接收目录：未设置");
+        receivePathLabel.setFont(font.deriveFont(Font.PLAIN, 14f));
+        receivePathLabel.setForeground(SUBTEXT);
+        receivePathLabel.setOpaque(true);
+        receivePathLabel.setBackground(new Color(249, 251, 254));
+        receivePathLabel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(BORDER),
+                BorderFactory.createEmptyBorder(12, 12, 12, 12)
+        ));
+        receivePathLabel.setPreferredSize(new Dimension(0, 48));
 
         statusLabel = new JLabel("系统状态将在这里显示。");
         statusLabel.setFont(font.deriveFont(Font.PLAIN, 14f));
@@ -84,14 +100,20 @@ public class Setting extends JPanel {
         top.add(sectionTitle, BorderLayout.NORTH);
         top.add(buttonPanel, BorderLayout.CENTER);
 
+        JPanel bottom = new JPanel(new BorderLayout(0, 12));
+        bottom.setOpaque(false);
+        bottom.add(receivePathLabel, BorderLayout.NORTH);
+        bottom.add(statusLabel, BorderLayout.SOUTH);
+
         card.add(top, BorderLayout.NORTH);
-        card.add(statusLabel, BorderLayout.SOUTH);
+        card.add(bottom, BorderLayout.SOUTH);
 
         add(card, BorderLayout.CENTER);
     }
 
     private JButton createActionButton(String text, Font font, boolean primary, int width) {
         JButton button = new JButton(text);
+
         button.setFont(font.deriveFont(Font.BOLD, 14f));
         button.setFocusPainted(false);
         button.setOpaque(true);
@@ -111,16 +133,40 @@ public class Setting extends JPanel {
         return button;
     }
 
-    public JButton getTrustManagerButton() { return trustManagerButton; }
-    public JButton getClearLogButton() { return clearLogButton; }
+    public JButton getTrustManagerButton() {
+        return trustManagerButton;
+    }
 
-    public void appendLog(String text) { setStatusMessage(text); }
+    public JButton getChooseReceiveFolderButton() {
+        return chooseReceiveFolderButton;
+    }
 
-    public void clearLog() { setStatusMessage("状态提示已清空。"); }
+    public JButton getClearLogButton() {
+        return clearLogButton;
+    }
+
+    public void appendLog(String text) {
+        setStatusMessage(text);
+    }
+
+    public void clearLog() {
+        setStatusMessage("状态提示已清空。");
+    }
 
     public void setStatusMessage(String message) {
-        if (message == null) message = "";
+        if (message == null) {
+            message = "";
+        }
+
         message = message.replace("\n", "  ");
         statusLabel.setText(message);
+    }
+
+    public void setReceivePathText(String path) {
+        if (path == null || path.trim().length() == 0) {
+            path = "未设置";
+        }
+
+        receivePathLabel.setText("当前接收目录：" + path);
     }
 }

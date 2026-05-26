@@ -19,8 +19,6 @@ public class TcpServer {
 
     private static boolean isRunning = false;
 
-    private static String saveDir = "received_files/";
-
     public interface AuthCallback {
         boolean onAuthRequest(String ip);
     }
@@ -85,7 +83,7 @@ public class TcpServer {
         receiveCallback = receiveCallbackParam;
         isRunning = true;
 
-        new File(saveDir).mkdirs();
+        new File(AppSettings.getReceiveDir()).mkdirs();
 
         new Thread(new Runnable() {
             @Override
@@ -207,6 +205,87 @@ public class TcpServer {
         }
     }
 
+    private static String sanitizeRelativePath(String path) {
+
+        if (path == null || path.trim().length() == 0) {
+            return "unnamed_file";
+        }
+
+        String normalized = path.replace("\\", "/");
+
+        while (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+
+        String[] parts = normalized.split("/");
+
+        StringBuilder safePath = new StringBuilder();
+
+        for (String part : parts) {
+
+            if (part == null || part.trim().length() == 0) {
+                continue;
+            }
+
+            if (".".equals(part) || "..".equals(part)) {
+                continue;
+            }
+
+            part = part.replace(":", "_")
+                       .replace("*", "_")
+                       .replace("?", "_")
+                       .replace("\"", "_")
+                       .replace("<", "_")
+                       .replace(">", "_")
+                       .replace("|", "_");
+
+            if (safePath.length() > 0) {
+                safePath.append(File.separator);
+            }
+
+            safePath.append(part);
+        }
+
+        if (safePath.length() == 0) {
+            return "unnamed_file";
+        }
+
+        return safePath.toString();
+    }
+
+    private static File buildUniqueSaveFile(File originalFile) {
+
+        if (!originalFile.exists()) {
+            return originalFile;
+        }
+
+        File parent = originalFile.getParentFile();
+
+        String name = originalFile.getName();
+
+        String baseName = name;
+
+        String ext = "";
+
+        int dotIndex = name.lastIndexOf(".");
+
+        if (dotIndex != -1) {
+            baseName = name.substring(0, dotIndex);
+            ext = name.substring(dotIndex);
+        }
+
+        int count = 1;
+
+        File saveFile;
+
+        do {
+            saveFile = new File(parent, baseName + "(" + count + ")" + ext);
+            count++;
+        } while (saveFile.exists());
+
+        return saveFile;
+    }
+    
     private static void receiveFiles(DataInputStream in, String clientIp) {
 
         try {
@@ -217,40 +296,44 @@ public class TcpServer {
 
             for (int i = 0; i < fileCount; i++) {
 
-                String fileName = in.readUTF();
+            	String relativePath = in.readUTF();
 
-                long fileSize = in.readLong();
+            	String safeRelativePath = sanitizeRelativePath(relativePath);
 
-                System.out.println("接收文件：" + fileName + " 大小：" + formatFileSize(fileSize));
+            	long fileSize = in.readLong();
 
-                File saveFile = new File(saveDir, fileName);
+            	System.out.println(
+            	        "接收文件：" +
+            	        safeRelativePath +
+            	        " 大小：" +
+            	        formatFileSize(fileSize)
+            	);
 
-                int count = 1;
-                String name = fileName;
-                String baseName = name;
-                String ext = "";
+            	File receiveDir = new File(AppSettings.getReceiveDir());
 
-                int dotIndex = name.lastIndexOf(".");
+            	if (!receiveDir.exists()) {
+            	    receiveDir.mkdirs();
+            	}
 
-                if (dotIndex != -1) {
-                    baseName = name.substring(0, dotIndex);
-                    ext = name.substring(dotIndex);
-                }
+            	File saveFile = new File(receiveDir, safeRelativePath);
 
-                while (saveFile.exists()) {
-                    saveFile = new File(saveDir, baseName + "(" + count + ")" + ext);
-                    count++;
-                }
+            	File parentFolder = saveFile.getParentFile();
 
-                String savePath = saveFile.getAbsolutePath();
+            	if (parentFolder != null && !parentFolder.exists()) {
+            	    parentFolder.mkdirs();
+            	}
+
+            	saveFile = buildUniqueSaveFile(saveFile);
+
+            	String savePath = saveFile.getAbsolutePath();
 
                 if (receiveCallback != null) {
-                    receiveCallback.onFileReceiveStart(
-                            clientIp,
-                            fileName,
-                            savePath,
-                            fileSize
-                    );
+                	receiveCallback.onFileReceiveStart(
+                	        clientIp,
+                	        safeRelativePath,
+                	        savePath,
+                	        fileSize
+                	);
                 }
 
                 FileOutputStream fileOut =
@@ -292,31 +375,30 @@ public class TcpServer {
                         lastProgress = progress;
 
                         if (receiveCallback != null) {
-                            receiveCallback.onFileReceiveProgress(
-                                    clientIp,
-                                    fileName,
-                                    savePath,
-                                    fileSize,
-                                    received,
-                                    progress
-                            );
+                        	receiveCallback.onFileReceiveProgress(
+                        	        clientIp,
+                        	        safeRelativePath,
+                        	        savePath,
+                        	        fileSize,
+                        	        received,
+                        	        progress
+                        	);
                         }
                     }
                 }
 
                 fileOut.close();
 
-                System.out.println(fileName + " 接收完成");
-                System.out.println("实际保存路径：" + saveFile.getAbsolutePath());
+                System.out.println(safeRelativePath + " 接收完成");                System.out.println("实际保存路径：" + saveFile.getAbsolutePath());
                 System.out.println("实际接收大小：" + formatFileSize(received));
 
                 if (receiveCallback != null) {
-                    receiveCallback.onFileReceived(
-                            clientIp,
-                            fileName,
-                            saveFile.getAbsolutePath(),
-                            received
-                    );
+                	receiveCallback.onFileReceived(
+                	        clientIp,
+                	        safeRelativePath,
+                	        saveFile.getAbsolutePath(),
+                	        received
+                	);
                 }
             }
 

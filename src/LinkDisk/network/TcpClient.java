@@ -7,6 +7,8 @@ import java.io.FileInputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 
+import LinkDisk.model.TransferFileItem;
+
 public class TcpClient {
 
     private static final int TCP_PORT = 6000;
@@ -125,7 +127,7 @@ public class TcpClient {
     }
 
     public static SendResult sendFiles(
-            File[] files,
+            TransferFileItem[] items,
             String ip,
             ProgressListener listener
     ) {
@@ -161,33 +163,37 @@ public class TcpClient {
                 );
             }
 
-            out.writeInt(files.length);
+            out.writeInt(items.length);
 
             long totalBytes = 0;
 
-            for (File file : files) {
-                totalBytes += file.length();
+            for (TransferFileItem item : items) {
+                totalBytes += item.getSize();
             }
 
             long sentBytes = 0;
 
             byte[] buffer = new byte[8192];
 
-            for (int i = 0; i < files.length; i++) {
+            for (int i = 0; i < items.length; i++) {
 
-                File file = files[i];
+                TransferFileItem item = items[i];
+
+                File file = item.getSourceFile();
+
+                String relativePath = item.getRelativePath();
 
                 System.out.println("准备发送文件：" + file.getAbsolutePath());
 
-                System.out.println("发送文件名：" + file.getName());
+                System.out.println("发送相对路径：" + relativePath);
 
-                System.out.println("发送文件大小：" + formatFileSize(file.length()));
+                System.out.println("发送文件大小：" + formatFileSize(item.getSize()));
 
-                listener.onFileStart(i, file.getName());
+                listener.onFileStart(i, relativePath);
 
-                out.writeUTF(file.getName());
+                out.writeUTF(relativePath);
 
-                out.writeLong(file.length());
+                out.writeLong(item.getSize());
 
                 FileInputStream fileIn = null;
 
@@ -216,22 +222,22 @@ public class TcpClient {
 
                         int fileProgress;
 
-                        if (file.length() == 0) {
+                        if (item.getSize() == 0) {
                             fileProgress = 100;
                         } else {
-                            fileProgress = (int) ((fileSentBytes * 100) / file.length());
+                            fileProgress = (int) ((fileSentBytes * 100) / item.getSize());
                         }
 
                         listener.onTotalProgress(totalProgress);
 
-                        listener.onFileProgress(i, file.getName(), fileProgress);
+                        listener.onFileProgress(i, relativePath, fileProgress);
                     }
 
                 } finally {
                     closeQuietly(fileIn);
                 }
 
-                listener.onFileComplete(i, file.getName());
+                listener.onFileComplete(i, relativePath);
             }
 
             out.flush();
