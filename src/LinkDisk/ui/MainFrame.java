@@ -1,6 +1,7 @@
 package LinkDisk.ui;
 
 import LinkDisk.network.*;
+import LinkDisk.model.TransferFileItem;
 
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
@@ -11,7 +12,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
-import LinkDisk.model.TransferFileItem;
+import java.util.ArrayList;
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.DefaultListModel;
 import javax.swing.JFileChooser;
@@ -38,10 +39,10 @@ public class MainFrame extends JFrame {
     private CardLayout cardLayout;
 
     private TransferFileItem[] selectedItems;
-    
+
     private LinkedHashMap<String, File> selectedRootMap =
             new LinkedHashMap<String, File>();
-    
+
     private TransferManager transferManager;
 
     private Set<String> connectedDevices = new HashSet<String>();
@@ -52,6 +53,12 @@ public class MainFrame extends JFrame {
     private Map<String, String> deviceNameMap =
             new HashMap<String, String>();
 
+    private Map<Integer, String> transferRowKeyMap =
+            new HashMap<Integer, String>();
+
+    private Set<String> cancelledTransferKeys =
+            new HashSet<String>();
+    
     private Map<String, String> devicePlatformMap =
             new HashMap<String, String>();
 
@@ -87,6 +94,33 @@ public class MainFrame extends JFrame {
         value = value / 1000;
         return String.format(java.util.Locale.US, "%.2f GB", value);
     }
+
+    private boolean isIgnoredSystemFile(File file) {
+
+        if (file == null) {
+            return true;
+        }
+
+        String name = file.getName();
+
+        if (".DS_Store".equals(name)) {
+            return true;
+        }
+
+        if (name.startsWith("._")) {
+            return true;
+        }
+
+        if ("Thumbs.db".equalsIgnoreCase(name)) {
+            return true;
+        }
+
+        if ("desktop.ini".equalsIgnoreCase(name)) {
+            return true;
+        }
+
+        return false;
+    }
     
     private void collectTransferItems(
             File root,
@@ -94,6 +128,10 @@ public class MainFrame extends JFrame {
             LinkedHashMap<String, TransferFileItem> itemMap
     ) {
         if (current == null || !current.exists()) {
+            return;
+        }
+        
+        if (isIgnoredSystemFile(current)) {
             return;
         }
 
@@ -137,13 +175,8 @@ public class MainFrame extends JFrame {
         LinkedHashMap<String, TransferFileItem> itemMap =
                 new LinkedHashMap<String, TransferFileItem>();
 
-        if (selectedItems != null) {
-            for (TransferFileItem item : selectedItems) {
-                itemMap.put(
-                        item.getSourceFile().getAbsolutePath(),
-                        item
-                );
-            }
+        if (selectedRoots == null) {
+            return new TransferFileItem[0];
         }
 
         for (File root : selectedRoots) {
@@ -159,6 +192,10 @@ public class MainFrame extends JFrame {
             return 0;
         }
 
+        if (isIgnoredSystemFile(current)) {
+            return 0;
+        }
+        
         if (current.isFile()) {
             return 1;
         }
@@ -178,6 +215,72 @@ public class MainFrame extends JFrame {
         return count;
     }
     
+    private boolean isItemSelected(File file) {
+
+        if (file == null || selectedItems == null) {
+            return false;
+        }
+
+        String filePath = file.getAbsolutePath();
+
+        for (TransferFileItem item : selectedItems) {
+            if (item.getSourceFile().getAbsolutePath().equals(filePath)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private int countSelectedItemsInRoot(File root) {
+
+        if (root == null || selectedItems == null) {
+            return 0;
+        }
+
+        String rootPath = root.getAbsolutePath();
+
+        int count = 0;
+
+        for (TransferFileItem item : selectedItems) {
+
+            String itemPath =
+                    item.getSourceFile().getAbsolutePath();
+
+            if (root.isFile()) {
+                if (itemPath.equals(rootPath)) {
+                    count++;
+                }
+            } else {
+                if (itemPath.equals(rootPath) ||
+                        itemPath.startsWith(rootPath + File.separator)) {
+                    count++;
+                }
+            }
+        }
+
+        return count;
+    }
+
+    private void removeEmptySelectedRoots() {
+
+        ArrayList<String> pathsToRemove =
+                new ArrayList<String>();
+
+        for (Map.Entry<String, File> entry : selectedRootMap.entrySet()) {
+
+            File root = entry.getValue();
+
+            if (countSelectedItemsInRoot(root) == 0) {
+                pathsToRemove.add(entry.getKey());
+            }
+        }
+
+        for (String path : pathsToRemove) {
+            selectedRootMap.remove(path);
+        }
+    }
+
     private boolean isTrustedDevice(String ip) {
         try {
             AuthManager authManager = new AuthManager();
@@ -239,7 +342,11 @@ public class MainFrame extends JFrame {
 
     private void updateSelectedFilesDisplay() {
 
-        if (selectedRootMap == null || selectedRootMap.isEmpty()) {
+        removeEmptySelectedRoots();
+
+        if (selectedRootMap == null || selectedRootMap.isEmpty()
+                || selectedItems == null || selectedItems.length == 0) {
+
             transferPanel.clearSelectedFilesText();
             return;
         }
@@ -250,19 +357,27 @@ public class MainFrame extends JFrame {
 
         for (File root : selectedRootMap.values()) {
 
+            int selectedCount = countSelectedItemsInRoot(root);
+
+            if (selectedCount == 0) {
+                continue;
+            }
+
             sb.append(index)
               .append(". ");
 
             if (root.isDirectory()) {
 
-                int fileCount = countFilesInRoot(root);
-
                 sb.append(displayText(root.getName()))
                   .append("  [文件夹]  共 ")
-                  .append(fileCount)
-                  .append(" 个文件");
+                  .append(selectedCount)
+                  .append(" 个待发送文件");
 
             } else {
+
+                if (!isItemSelected(root)) {
+                    continue;
+                }
 
                 sb.append(displayText(root.getName()))
                   .append("  ")
@@ -274,10 +389,8 @@ public class MainFrame extends JFrame {
             index++;
         }
 
-        if (selectedItems != null && selectedItems.length > 0) {
-            sb.append("\n实际待发送文件数：")
-              .append(selectedItems.length);
-        }
+        sb.append("\n实际待发送文件数：")
+          .append(selectedItems.length);
 
         transferPanel.setSelectedFilesText(sb.toString());
     }
@@ -413,11 +526,28 @@ public class MainFrame extends JFrame {
 
         transferPanel.getSendButton().addActionListener(e -> sendFiles());
 
+        transferPanel.getManageSelectedButton().addActionListener(e -> manageSelectedFiles());
+        
         transferPanel.getOpenFolderButton().addActionListener(e -> openReceiveFolder());
 
         transferPanel.getClearSelectedButton().addActionListener(e -> resetSelectedFiles());
 
+        transferPanel.getCancelTaskButton().addActionListener(e -> cancelSelectedTransferTasks());
+
         transferPanel.getClearTaskButton().addActionListener(e -> clearTransferTasks());
+
+        transferPanel.setFileDropListener(
+                new Transferring.FileDropListener() {
+                    @Override
+                    public void onFilesDropped(java.util.List<File> files) {
+
+                        File[] droppedRoots =
+                                files.toArray(new File[0]);
+
+                        addSelectedRoots(droppedRoots, "拖拽");
+                    }
+                }
+        );
     }
 
     private void bindSettingsActions() {
@@ -604,6 +734,76 @@ public class MainFrame extends JFrame {
         }
     }
 
+    private void mergeSelectedItems(TransferFileItem[] newItems) {
+
+        LinkedHashMap<String, TransferFileItem> itemMap =
+                new LinkedHashMap<String, TransferFileItem>();
+
+        if (selectedItems != null) {
+            for (TransferFileItem item : selectedItems) {
+                itemMap.put(
+                        item.getSourceFile().getAbsolutePath(),
+                        item
+                );
+            }
+        }
+
+        if (newItems != null) {
+            for (TransferFileItem item : newItems) {
+                itemMap.put(
+                        item.getSourceFile().getAbsolutePath(),
+                        item
+                );
+            }
+        }
+
+        selectedItems = itemMap.values().toArray(new TransferFileItem[0]);
+    }
+    
+    private void addSelectedRoots(File[] selectedRoots, String sourceText) {
+
+        if (selectedRoots == null || selectedRoots.length == 0) {
+            return;
+        }
+
+        int addedRootCount = 0;
+
+        for (File root : selectedRoots) {
+
+            if (root == null || !root.exists()) {
+                continue;
+            }
+
+            if (isIgnoredSystemFile(root)) {
+                continue;
+            }
+
+            selectedRootMap.put(root.getAbsolutePath(), root);
+
+            addedRootCount++;
+        }
+
+        TransferFileItem[] newItems =
+                buildTransferItems(selectedRoots);
+
+        mergeSelectedItems(newItems);
+        
+        updateSelectedFilesDisplay();
+
+        if (selectedItems.length == 0) {
+            showTransferStatus("未发现可发送文件。空文件夹暂不传输。");
+        } else {
+            showTransferStatus(
+                    sourceText +
+                    "加入 " +
+                    addedRootCount +
+                    " 个项目，当前实际待发送 " +
+                    selectedItems.length +
+                    " 个文件。"
+            );
+        }
+    }
+
     private void selectFiles() {
 
         JFileChooser fileChooser = new JFileChooser();
@@ -616,26 +816,129 @@ public class MainFrame extends JFrame {
 
         if (result == JFileChooser.APPROVE_OPTION) {
 
-        	File[] selectedRoots = fileChooser.getSelectedFiles();
+            File[] selectedRoots = fileChooser.getSelectedFiles();
 
-        	for (File root : selectedRoots) {
-        	    selectedRootMap.put(root.getAbsolutePath(), root);
-        	}
-
-        	selectedItems = buildTransferItems(
-        	        selectedRootMap.values().toArray(new File[0])
-        	);
-
-        	updateSelectedFilesDisplay();
-
-        	if (selectedItems.length == 0) {
-        	    showTransferStatus("未发现可发送文件。空文件夹暂不传输。");
-        	} else {
-        	    showTransferStatus("当前实际待发送 " + selectedItems.length + " 个文件。");
-        	}
+            addSelectedRoots(selectedRoots, "选择");
         }
     }
 
+    private void manageSelectedFiles() {
+
+        if (selectedItems == null || selectedItems.length == 0) {
+            showTransferStatus("当前没有已选文件。");
+            return;
+        }
+
+        javax.swing.DefaultListModel<TransferFileItem> model =
+                new javax.swing.DefaultListModel<TransferFileItem>();
+
+        for (TransferFileItem item : selectedItems) {
+            model.addElement(item);
+        }
+
+        JList<TransferFileItem> itemList =
+                new JList<TransferFileItem>(model);
+
+        itemList.setSelectionMode(
+                javax.swing.ListSelectionModel.MULTIPLE_INTERVAL_SELECTION
+        );
+
+        itemList.setCellRenderer(new DefaultListCellRenderer() {
+            @Override
+            public java.awt.Component getListCellRendererComponent(
+                    JList<?> list,
+                    Object value,
+                    int index,
+                    boolean isSelected,
+                    boolean cellHasFocus
+            ) {
+                JLabel label =
+                        (JLabel) super.getListCellRendererComponent(
+                                list,
+                                value,
+                                index,
+                                isSelected,
+                                cellHasFocus
+                        );
+
+                TransferFileItem item =
+                        (TransferFileItem) value;
+
+                label.setText(
+                        displayText(item.getRelativePath()) +
+                        "    " +
+                        displayText(formatFileSize(item.getSize()))
+                );
+
+                return label;
+            }
+        });
+
+        JScrollPane scrollPane =
+                new JScrollPane(itemList);
+
+        scrollPane.setPreferredSize(
+                new java.awt.Dimension(620, 360)
+        );
+
+        int option = JOptionPane.showConfirmDialog(
+                MainFrame.this,
+                scrollPane,
+                "管理已选文件：选择不想发送的文件后点击确定移除",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE
+        );
+
+        if (option != JOptionPane.OK_OPTION) {
+            return;
+        }
+
+        java.util.List<TransferFileItem> removedItems =
+                itemList.getSelectedValuesList();
+
+        if (removedItems == null || removedItems.isEmpty()) {
+            showTransferStatus("未选择要移除的文件。");
+            return;
+        }
+
+        java.util.HashSet<String> removedPathSet =
+                new java.util.HashSet<String>();
+
+        for (TransferFileItem item : removedItems) {
+            removedPathSet.add(
+                    item.getSourceFile().getAbsolutePath()
+            );
+        }
+
+        ArrayList<TransferFileItem> keptItems =
+                new ArrayList<TransferFileItem>();
+
+        for (TransferFileItem item : selectedItems) {
+
+            String path =
+                    item.getSourceFile().getAbsolutePath();
+
+            if (!removedPathSet.contains(path)) {
+                keptItems.add(item);
+            }
+        }
+
+        selectedItems =
+                keptItems.toArray(new TransferFileItem[0]);
+
+        removeEmptySelectedRoots();
+
+        updateSelectedFilesDisplay();
+
+        showTransferStatus(
+                "已从发送列表移除 " +
+                removedItems.size() +
+                " 个文件，当前实际待发送 " +
+                selectedItems.length +
+                " 个文件。"
+        );
+    }
+    
     private void sendFiles() {
 
         if (selectedItems == null || selectedItems.length == 0) {
@@ -663,6 +966,9 @@ public class MainFrame extends JFrame {
 
         TransferFileItem[] itemsToSend = selectedItems.clone();
 
+        String batchId =
+                String.valueOf(System.currentTimeMillis());
+        
         transferPanel.setProgress(0);
 
         showTransferStatus("开始发送文件，共 " + itemsToSend.length + " 个。");
@@ -694,8 +1000,13 @@ public class MainFrame extends JFrame {
                         0
                 );
 
-                rowIndexMap.put(ip + "|" + i, rowIndex);
-            }
+                String rowKey =
+                        batchId + "|" + ip + "|" + i;
+
+                rowIndexMap.put(rowKey, rowIndex);
+
+                transferRowKeyMap.put(rowIndex, rowKey);
+              }
         }
 
         new Thread(new Runnable() {
@@ -732,7 +1043,7 @@ public class MainFrame extends JFrame {
                                         @Override
                                         public void run() {
                                             Integer rowIndex =
-                                                    rowIndexMap.get(ip + "|" + fileIndex);
+                                            		rowIndexMap.get(batchId + "|" + ip + "|" + fileIndex);
 
                                             if (rowIndex != null) {
                                                 updateTransferRow(rowIndex, "传输中", 0);
@@ -751,7 +1062,7 @@ public class MainFrame extends JFrame {
                                         @Override
                                         public void run() {
                                             Integer rowIndex =
-                                                    rowIndexMap.get(ip + "|" + fileIndex);
+                                            		rowIndexMap.get(batchId + "|" + ip + "|" + fileIndex);
 
                                             if (rowIndex != null) {
                                                 updateTransferRow(rowIndex, "传输中", progress);
@@ -766,13 +1077,23 @@ public class MainFrame extends JFrame {
                                         @Override
                                         public void run() {
                                             Integer rowIndex =
-                                                    rowIndexMap.get(ip + "|" + fileIndex);
+                                            		rowIndexMap.get(batchId + "|" + ip + "|" + fileIndex);
 
                                             if (rowIndex != null) {
                                                 updateTransferRow(rowIndex, "完成", 100);
                                             }
                                         }
                                     });
+                                }
+                            },
+                            new TcpClient.CancelChecker() {
+                                @Override
+                                public boolean isCancelled(int fileIndex, String relativePath) {
+
+                                    String key =
+                                            batchId + "|" + ip + "|" + fileIndex;
+
+                                    return cancelledTransferKeys.contains(key);
                                 }
                             }
                     );
@@ -785,18 +1106,28 @@ public class MainFrame extends JFrame {
                                 showTransferStatus("设备 " + displayIp(ip) + " 文件发送完成。");
                             } else {
                                 for (int i = 0; i < itemsToSend.length; i++) {
-                                    Integer rowIndex = rowIndexMap.get(ip + "|" + i);
+                                	Integer rowIndex = rowIndexMap.get(batchId + "|" + ip + "|" + i);
 
                                     if (rowIndex != null) {
                                         updateTransferRow(rowIndex, "失败", 0);
                                     }
                                 }
 
-                                showTransferStatus(
+                                String errorMessage =
                                         "设备 " +
-                                                displayIp(ip) +
-                                                " 文件发送失败，原因：" +
-                                                sendResult.message
+                                        displayIp(ip) +
+                                        " 文件发送失败，原因：" +
+                                        sendResult.message;
+
+                                System.err.println(errorMessage);
+
+                                showTransferStatus(errorMessage);
+
+                                JOptionPane.showMessageDialog(
+                                        MainFrame.this,
+                                        errorMessage,
+                                        "发送失败",
+                                        JOptionPane.ERROR_MESSAGE
                                 );
                             }
                         }
@@ -836,6 +1167,60 @@ public class MainFrame extends JFrame {
         showTransferStatus("已重置当前选择的文件。");
     }
 
+    private void cancelSelectedTransferTasks() {
+
+        javax.swing.JTable table =
+                transferPanel.getTransferTable();
+
+        int[] selectedRows =
+                table.getSelectedRows();
+
+        if (selectedRows == null || selectedRows.length == 0) {
+            showTransferStatus("请先在传输任务表中选择要取消的任务。");
+            return;
+        }
+
+        int cancelledCount = 0;
+
+        int skippedCount = 0;
+
+        for (int row : selectedRows) {
+
+            String status =
+                    String.valueOf(
+                            transferPanel.getTransferTableModel()
+                                    .getValueAt(row, 4)
+                    );
+
+            if (!"等待".equals(status)) {
+                skippedCount++;
+                continue;
+            }
+
+            String key =
+                    transferRowKeyMap.get(row);
+
+            if (key == null) {
+                skippedCount++;
+                continue;
+            }
+
+            cancelledTransferKeys.add(key);
+
+            updateTransferRow(row, "已取消", 0);
+
+            cancelledCount++;
+        }
+
+        showTransferStatus(
+                "已取消 " +
+                cancelledCount +
+                " 个等待任务；" +
+                skippedCount +
+                " 个任务因已开始、已完成或状态不允许而跳过。"
+        );
+    }
+    
     private void clearTransferTasks() {
 
         int confirm = JOptionPane.showConfirmDialog(
@@ -846,9 +1231,15 @@ public class MainFrame extends JFrame {
         );
 
         if (confirm == JOptionPane.YES_OPTION) {
-            transferPanel.clearTasks();
-            receiveRowIndexMap.clear();
-            showTransferStatus("已清空传输任务。");
+        	transferPanel.clearTasks();
+
+        	receiveRowIndexMap.clear();
+
+        	transferRowKeyMap.clear();
+
+        	cancelledTransferKeys.clear();
+
+        	showTransferStatus("已清空传输任务。");
         }
     }
 
@@ -947,7 +1338,6 @@ public class MainFrame extends JFrame {
             }
         }
     }
-
 
     private void chooseReceiveFolder() {
 

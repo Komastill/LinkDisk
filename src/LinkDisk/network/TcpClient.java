@@ -41,6 +41,10 @@ public class TcpClient {
         }
     }
 
+    public interface CancelChecker {
+        boolean isCancelled(int fileIndex, String relativePath);
+    }
+    
     public static ConnectResult connectDevice(String ip) {
 
         Socket socket = null;
@@ -131,6 +135,15 @@ public class TcpClient {
             String ip,
             ProgressListener listener
     ) {
+        return sendFiles(items, ip, listener, null);
+    }
+    
+    public static SendResult sendFiles(
+            TransferFileItem[] items,
+            String ip,
+            ProgressListener listener,
+            CancelChecker cancelChecker
+    ) {
 
         Socket socket = null;
         DataOutputStream out = null;
@@ -183,6 +196,26 @@ public class TcpClient {
 
                 String relativePath = item.getRelativePath();
 
+                if (cancelChecker != null &&
+                        cancelChecker.isCancelled(i, relativePath)) {
+
+                    System.out.println("跳过已取消文件：" + relativePath);
+
+                    sentBytes += item.getSize();
+
+                    int totalProgress;
+
+                    if (totalBytes == 0) {
+                        totalProgress = 100;
+                    } else {
+                        totalProgress = (int) ((sentBytes * 100) / totalBytes);
+                    }
+
+                    listener.onTotalProgress(totalProgress);
+
+                    continue;
+                }
+                
                 System.out.println("准备发送文件：" + file.getAbsolutePath());
 
                 System.out.println("发送相对路径：" + relativePath);
