@@ -6,6 +6,8 @@ import java.io.FileOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 
 public class TcpServer {
 
@@ -296,48 +298,54 @@ public class TcpServer {
 
             for (int i = 0; i < fileCount; i++) {
 
-            	String relativePath = in.readUTF();
+                String relativePath = in.readUTF();
 
-            	String safeRelativePath = sanitizeRelativePath(relativePath);
+                String safeRelativePath = sanitizeRelativePath(relativePath);
 
-            	long fileSize = in.readLong();
+                long fileSize = in.readLong();
 
-            	System.out.println(
-            	        "接收文件：" +
-            	        safeRelativePath +
-            	        " 大小：" +
-            	        formatFileSize(fileSize)
-            	);
+                System.out.println(
+                        "接收文件：" +
+                        safeRelativePath +
+                        " 大小：" +
+                        formatFileSize(fileSize)
+                );
 
-            	File receiveDir = new File(AppSettings.getReceiveDir());
+                File receiveDir = new File(AppSettings.getReceiveDir());
 
-            	if (!receiveDir.exists()) {
-            	    receiveDir.mkdirs();
-            	}
+                if (!receiveDir.exists()) {
+                    receiveDir.mkdirs();
+                }
 
-            	File saveFile = new File(receiveDir, safeRelativePath);
+                File saveFile = new File(receiveDir, safeRelativePath);
 
-            	File parentFolder = saveFile.getParentFile();
+                File parentFolder = saveFile.getParentFile();
 
-            	if (parentFolder != null && !parentFolder.exists()) {
-            	    parentFolder.mkdirs();
-            	}
+                if (parentFolder != null && !parentFolder.exists()) {
+                    parentFolder.mkdirs();
+                }
 
-            	saveFile = buildUniqueSaveFile(saveFile);
+                saveFile = buildUniqueSaveFile(saveFile);
 
-            	String savePath = saveFile.getAbsolutePath();
+                String savePath = saveFile.getAbsolutePath();
+
+                File tempFile = new File(savePath + ".part");
+
+                if (tempFile.exists()) {
+                    tempFile.delete();
+                }
 
                 if (receiveCallback != null) {
-                	receiveCallback.onFileReceiveStart(
-                	        clientIp,
-                	        safeRelativePath,
-                	        savePath,
-                	        fileSize
-                	);
+                    receiveCallback.onFileReceiveStart(
+                            clientIp,
+                            safeRelativePath,
+                            savePath,
+                            fileSize
+                    );
                 }
 
                 FileOutputStream fileOut =
-                        new FileOutputStream(saveFile);
+                        new FileOutputStream(tempFile);
 
                 byte[] buffer = new byte[8192];
 
@@ -375,30 +383,51 @@ public class TcpServer {
                         lastProgress = progress;
 
                         if (receiveCallback != null) {
-                        	receiveCallback.onFileReceiveProgress(
-                        	        clientIp,
-                        	        safeRelativePath,
-                        	        savePath,
-                        	        fileSize,
-                        	        received,
-                        	        progress
-                        	);
+                            receiveCallback.onFileReceiveProgress(
+                                    clientIp,
+                                    safeRelativePath,
+                                    savePath,
+                                    fileSize,
+                                    received,
+                                    progress
+                            );
                         }
                     }
                 }
 
                 fileOut.close();
 
-                System.out.println(safeRelativePath + " 接收完成");                System.out.println("实际保存路径：" + saveFile.getAbsolutePath());
-                System.out.println("实际接收大小：" + formatFileSize(received));
+                if (received == fileSize) {
 
-                if (receiveCallback != null) {
-                	receiveCallback.onFileReceived(
-                	        clientIp,
-                	        safeRelativePath,
-                	        saveFile.getAbsolutePath(),
-                	        received
-                	);
+                    Files.move(
+                            tempFile.toPath(),
+                            saveFile.toPath(),
+                            StandardCopyOption.REPLACE_EXISTING
+                    );
+
+                    System.out.println(safeRelativePath + " 接收完成");
+                    System.out.println("实际保存路径：" + saveFile.getAbsolutePath());
+                    System.out.println("实际接收大小：" + formatFileSize(received));
+
+                    if (receiveCallback != null) {
+                        receiveCallback.onFileReceived(
+                                clientIp,
+                                safeRelativePath,
+                                saveFile.getAbsolutePath(),
+                                received
+                        );
+                    }
+
+                } else {
+
+                    if (tempFile.exists()) {
+                        tempFile.delete();
+                    }
+
+                    System.out.println(
+                            safeRelativePath +
+                            " 接收失败：文件未完整接收，已删除临时文件"
+                    );
                 }
             }
 
