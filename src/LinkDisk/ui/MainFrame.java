@@ -6,7 +6,13 @@ import LinkDisk.model.TransferFileItem;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Font;
+import java.awt.Toolkit;
+import java.awt.datatransfer.StringSelection;
 import java.io.File;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -447,6 +453,8 @@ public class MainFrame extends JFrame {
                 }
         );
 
+        refreshLocalInfoDisplay();
+
         transferPanel = new Transferring(font);
 
         settingsPanel = new Setting(font);
@@ -515,6 +523,8 @@ public class MainFrame extends JFrame {
 
         devicePanel.getAddIpButton().addActionListener(e -> addIpManually());
 
+        devicePanel.getCopyLocalIpButton().addActionListener(e -> copyLocalIpToClipboard());
+
         devicePanel.getDeleteDeviceButton().addActionListener(e -> deleteSelectedDevice());
 
         devicePanel.getRefreshDeviceButton().addActionListener(e -> refreshDeviceList());
@@ -527,8 +537,6 @@ public class MainFrame extends JFrame {
         transferPanel.getSendButton().addActionListener(e -> sendFiles());
 
         transferPanel.getManageSelectedButton().addActionListener(e -> manageSelectedFiles());
-        
-        transferPanel.getOpenFolderButton().addActionListener(e -> openReceiveFolder());
 
         transferPanel.getClearSelectedButton().addActionListener(e -> resetSelectedFiles());
 
@@ -556,7 +564,106 @@ public class MainFrame extends JFrame {
 
         settingsPanel.getChooseReceiveFolderButton().addActionListener(e -> chooseReceiveFolder());
 
-        settingsPanel.getClearLogButton().addActionListener(e -> clearStatusMessage());
+        settingsPanel.getOpenReceiveFolderButton().addActionListener(e -> openReceiveFolder());
+    }
+
+    private ArrayList<String> getLocalIpLines() {
+
+        ArrayList<String> ipLines = new ArrayList<String>();
+
+        try {
+            Enumeration<NetworkInterface> interfaces =
+                    NetworkInterface.getNetworkInterfaces();
+
+            while (interfaces.hasMoreElements()) {
+
+                NetworkInterface networkInterface =
+                        interfaces.nextElement();
+
+                if (!networkInterface.isUp()
+                        || networkInterface.isLoopback()
+                        || networkInterface.isVirtual()) {
+                    continue;
+                }
+
+                Enumeration<InetAddress> addresses =
+                        networkInterface.getInetAddresses();
+
+                while (addresses.hasMoreElements()) {
+
+                    InetAddress address =
+                            addresses.nextElement();
+
+                    if (address instanceof Inet4Address
+                            && !address.isLoopbackAddress()) {
+
+                        ipLines.add(address.getHostAddress());
+                    }
+                }
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return ipLines;
+    }
+
+    private String buildLocalIpInfoText() {
+
+        StringBuilder sb = new StringBuilder();
+
+        sb.append("设备名：")
+          .append(UdpListener.getThisDeviceName())
+          .append("\n");
+
+        sb.append("平台：")
+          .append(UdpListener.getThisPlatform())
+          .append("\n");
+
+        ArrayList<String> ipLines = getLocalIpLines();
+
+        if (ipLines.isEmpty()) {
+            sb.append("本机 IP：暂未检测到可用 IPv4 地址");
+        } else {
+            sb.append("本机 IP：");
+
+            for (int i = 0; i < ipLines.size(); i++) {
+                if (i > 0) {
+                    sb.append(" / ");
+                }
+
+                sb.append(ipLines.get(i));
+            }
+        }
+
+        return sb.toString().trim();
+    }
+
+    private void refreshLocalInfoDisplay() {
+        if (devicePanel != null) {
+            devicePanel.setLocalInfoText(buildLocalIpInfoText());
+        }
+    }
+
+    private void copyLocalIpToClipboard() {
+
+        ArrayList<String> ipLines = getLocalIpLines();
+
+        if (ipLines.isEmpty()) {
+            showDeviceStatus("暂未检测到可复制的本机 IPv4 地址。");
+            return;
+        }
+
+        String ip = ipLines.get(0);
+
+        Toolkit.getDefaultToolkit()
+                .getSystemClipboard()
+                .setContents(new StringSelection(ip), null);
+
+        refreshLocalInfoDisplay();
+
+        showDeviceStatus("已复制本机 IP：" + displayIp(ip));
     }
 
     private void connectSelectedDevice() {
@@ -730,6 +837,8 @@ public class MainFrame extends JFrame {
             deviceNameMap.clear();
             devicePlatformMap.clear();
 
+            refreshLocalInfoDisplay();
+
             showDeviceStatus("已刷新设备列表，等待重新发现设备。");
         }
     }
@@ -825,98 +934,291 @@ public class MainFrame extends JFrame {
     private void manageSelectedFiles() {
 
         if (selectedItems == null || selectedItems.length == 0) {
-            showTransferStatus("当前没有已选文件。");
+            showTransferStatus("当前没有待发送文件。请先点击“选择文件”，或把文件/文件夹拖到待发送区域。");
+            JOptionPane.showMessageDialog(
+                    MainFrame.this,
+                    "当前没有待发送文件。\n\n请先点击“选择文件”，或把文件/文件夹拖到待发送区域。",
+                    "没有可管理的文件",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
             return;
         }
 
-        javax.swing.DefaultListModel<TransferFileItem> model =
-                new javax.swing.DefaultListModel<TransferFileItem>();
+        class NodeData {
+            String title;
+            String type;
+            File rootFile;
+            TransferFileItem item;
 
-        for (TransferFileItem item : selectedItems) {
-            model.addElement(item);
+            NodeData(String title, String type, File rootFile, TransferFileItem item) {
+                this.title = title;
+                this.type = type;
+                this.rootFile = rootFile;
+                this.item = item;
+            }
+
+            @Override
+            public String toString() {
+                if ("root".equals(type)) {
+                    return title;
+                }
+
+                if ("folder".equals(type)) {
+                    int count = countSelectedItemsInRoot(rootFile);
+                    return "【文件夹整组】 " + displayText(rootFile.getName()) + "    共 " + count + " 个待发送文件";
+                }
+
+                if ("single".equals(type) && item != null) {
+                    return "【单独文件】 " + displayText(item.getRelativePath()) + "    " + displayText(formatFileSize(item.getSize()));
+                }
+
+                if (item != null) {
+                    String name = item.getRelativePath();
+
+                    if (rootFile != null && rootFile.isDirectory()) {
+                        String prefix = rootFile.getName() + "/";
+                        if (name.startsWith(prefix)) {
+                            name = name.substring(prefix.length());
+                        }
+                    }
+
+                    return "    └ 文件  " + displayText(name) + "    " + displayText(formatFileSize(item.getSize()));
+                }
+
+                return title;
+            }
         }
 
-        JList<TransferFileItem> itemList =
-                new JList<TransferFileItem>(model);
+        javax.swing.tree.DefaultMutableTreeNode rootNode =
+                new javax.swing.tree.DefaultMutableTreeNode(
+                        new NodeData("待发送文件", "root", null, null)
+                );
 
-        itemList.setSelectionMode(
-                javax.swing.ListSelectionModel.MULTIPLE_INTERVAL_SELECTION
-        );
+        for (File root : selectedRootMap.values()) {
 
-        itemList.setCellRenderer(new DefaultListCellRenderer() {
-            @Override
-            public java.awt.Component getListCellRendererComponent(
-                    JList<?> list,
-                    Object value,
-                    int index,
-                    boolean isSelected,
-                    boolean cellHasFocus
-            ) {
-                JLabel label =
-                        (JLabel) super.getListCellRendererComponent(
-                                list,
-                                value,
-                                index,
-                                isSelected,
-                                cellHasFocus
+            int selectedCount = countSelectedItemsInRoot(root);
+
+            if (selectedCount == 0) {
+                continue;
+            }
+
+            if (root.isDirectory()) {
+
+                javax.swing.tree.DefaultMutableTreeNode folderNode =
+                        new javax.swing.tree.DefaultMutableTreeNode(
+                                new NodeData(root.getName(), "folder", root, null)
                         );
 
-                TransferFileItem item =
-                        (TransferFileItem) value;
+                String rootPath = root.getAbsolutePath();
 
-                label.setText(
-                        displayText(item.getRelativePath()) +
-                        "    " +
-                        displayText(formatFileSize(item.getSize()))
-                );
+                for (TransferFileItem item : selectedItems) {
+                    String itemPath = item.getSourceFile().getAbsolutePath();
+
+                    if (itemPath.equals(rootPath)
+                            || itemPath.startsWith(rootPath + File.separator)) {
+
+                        folderNode.add(
+                                new javax.swing.tree.DefaultMutableTreeNode(
+                                        new NodeData(
+                                                item.getRelativePath(),
+                                                "file",
+                                                root,
+                                                item
+                                        )
+                                )
+                        );
+                    }
+                }
+
+                rootNode.add(folderNode);
+
+            } else {
+
+                for (TransferFileItem item : selectedItems) {
+                    if (item.getSourceFile().getAbsolutePath().equals(root.getAbsolutePath())) {
+                        rootNode.add(
+                                new javax.swing.tree.DefaultMutableTreeNode(
+                                        new NodeData(
+                                                item.getRelativePath(),
+                                                "single",
+                                                root,
+                                                item
+                                        )
+                                )
+                        );
+                        break;
+                    }
+                }
+            }
+        }
+
+        javax.swing.JTree tree = new javax.swing.JTree(rootNode);
+        tree.setRootVisible(false);
+        tree.setShowsRootHandles(true);
+        tree.getSelectionModel().setSelectionMode(
+                javax.swing.tree.TreeSelectionModel.DISCONTIGUOUS_TREE_SELECTION
+        );
+        Font treeFont = UIManager.getFont("Tree.font");
+        if (treeFont == null) {
+            treeFont = new Font(Font.DIALOG, Font.PLAIN, 14);
+        }
+        final Font finalTreeFont = treeFont;
+        tree.setFont(finalTreeFont.deriveFont(Font.PLAIN, 14f));
+        tree.setRowHeight(30);
+
+        tree.setCellRenderer(new javax.swing.tree.DefaultTreeCellRenderer() {
+            @Override
+            public java.awt.Component getTreeCellRendererComponent(
+                    javax.swing.JTree tree,
+                    Object value,
+                    boolean selected,
+                    boolean expanded,
+                    boolean leaf,
+                    int row,
+                    boolean hasFocus
+            ) {
+                javax.swing.JLabel label =
+                        (javax.swing.JLabel) super.getTreeCellRendererComponent(
+                                tree,
+                                value,
+                                selected,
+                                expanded,
+                                leaf,
+                                row,
+                                hasFocus
+                        );
+
+                Object userObject = null;
+
+                if (value instanceof javax.swing.tree.DefaultMutableTreeNode) {
+                    userObject = ((javax.swing.tree.DefaultMutableTreeNode) value).getUserObject();
+                }
+
+                if (userObject instanceof NodeData) {
+                    NodeData data = (NodeData) userObject;
+                    label.setText(data.toString());
+                    label.setBorder(javax.swing.BorderFactory.createEmptyBorder(4, 6, 4, 6));
+
+                    if ("folder".equals(data.type)) {
+                        label.setFont(finalTreeFont.deriveFont(Font.BOLD, 15f));
+                        label.setForeground(UiStyle.PRIMARY_DARK);
+                    } else if ("single".equals(data.type)) {
+                        label.setFont(finalTreeFont.deriveFont(Font.BOLD, 14f));
+                        label.setForeground(UiStyle.TEXT);
+                    } else if ("file".equals(data.type)) {
+                        label.setFont(finalTreeFont.deriveFont(Font.PLAIN, 14f));
+                        label.setForeground(UiStyle.SUBTEXT);
+                    }
+
+                    if (selected) {
+                        label.setForeground(UiStyle.TEXT);
+                    }
+                }
 
                 return label;
             }
         });
 
-        JScrollPane scrollPane =
-                new JScrollPane(itemList);
+        for (int i = 0; i < tree.getRowCount(); i++) {
+            tree.expandRow(i);
+        }
 
-        scrollPane.setPreferredSize(
-                new java.awt.Dimension(620, 360)
+        JScrollPane scrollPane = new JScrollPane(tree);
+        scrollPane.setPreferredSize(new java.awt.Dimension(780, 420));
+
+        JLabel titleLabel = new JLabel("选择要从待发送列表移除的内容");
+        titleLabel.setFont(new Font(Font.DIALOG, Font.BOLD, 16));
+        titleLabel.setForeground(UiStyle.TEXT);
+
+        JLabel hintLabel = new JLabel(
+                "<html>选择【文件夹整组】会移除整个文件夹；展开文件夹后选择具体文件，只会移除该文件。</html>"
         );
+        hintLabel.setFont(new Font(Font.DIALOG, Font.PLAIN, 13));
+        hintLabel.setForeground(UiStyle.SUBTEXT);
 
-        int option = JOptionPane.showConfirmDialog(
+        JPanel dialogPanel = new JPanel(new BorderLayout(0, 12));
+        dialogPanel.setBorder(javax.swing.BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        dialogPanel.add(titleLabel, BorderLayout.NORTH);
+
+        JPanel centerPanel = new JPanel(new BorderLayout(0, 8));
+        centerPanel.add(hintLabel, BorderLayout.NORTH);
+        centerPanel.add(scrollPane, BorderLayout.CENTER);
+        dialogPanel.add(centerPanel, BorderLayout.CENTER);
+
+        Object[] options = {"删除所选", "取消"};
+
+        int option = JOptionPane.showOptionDialog(
                 MainFrame.this,
-                scrollPane,
-                "管理已选文件：选择不想发送的文件后点击确定移除",
-                JOptionPane.OK_CANCEL_OPTION,
-                JOptionPane.PLAIN_MESSAGE
+                dialogPanel,
+                "管理待发送文件",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.PLAIN_MESSAGE,
+                null,
+                options,
+                options[0]
         );
 
-        if (option != JOptionPane.OK_OPTION) {
+        if (option != JOptionPane.YES_OPTION) {
             return;
         }
 
-        java.util.List<TransferFileItem> removedItems =
-                itemList.getSelectedValuesList();
+        javax.swing.tree.TreePath[] selectedPaths = tree.getSelectionPaths();
 
-        if (removedItems == null || removedItems.isEmpty()) {
-            showTransferStatus("未选择要移除的文件。");
+        if (selectedPaths == null || selectedPaths.length == 0) {
+            showTransferStatus("未选择要移除的文件或文件夹。");
             return;
         }
 
         java.util.HashSet<String> removedPathSet =
                 new java.util.HashSet<String>();
 
-        for (TransferFileItem item : removedItems) {
-            removedPathSet.add(
-                    item.getSourceFile().getAbsolutePath()
-            );
+        for (javax.swing.tree.TreePath treePath : selectedPaths) {
+
+            Object nodeObject = treePath.getLastPathComponent();
+
+            if (!(nodeObject instanceof javax.swing.tree.DefaultMutableTreeNode)) {
+                continue;
+            }
+
+            javax.swing.tree.DefaultMutableTreeNode treeNode =
+                    (javax.swing.tree.DefaultMutableTreeNode) nodeObject;
+
+            Object userObject = treeNode.getUserObject();
+
+            if (!(userObject instanceof NodeData)) {
+                continue;
+            }
+
+            NodeData data = (NodeData) userObject;
+
+            if ("folder".equals(data.type) && data.rootFile != null) {
+
+                String rootPath = data.rootFile.getAbsolutePath();
+
+                for (TransferFileItem item : selectedItems) {
+                    String itemPath = item.getSourceFile().getAbsolutePath();
+
+                    if (itemPath.equals(rootPath)
+                            || itemPath.startsWith(rootPath + File.separator)) {
+                        removedPathSet.add(itemPath);
+                    }
+                }
+
+            } else if (("file".equals(data.type) || "single".equals(data.type)) && data.item != null) {
+                removedPathSet.add(data.item.getSourceFile().getAbsolutePath());
+            }
+        }
+
+        if (removedPathSet.isEmpty()) {
+            showTransferStatus("未选择有效的文件或文件夹。");
+            return;
         }
 
         ArrayList<TransferFileItem> keptItems =
                 new ArrayList<TransferFileItem>();
 
         for (TransferFileItem item : selectedItems) {
-
-            String path =
-                    item.getSourceFile().getAbsolutePath();
+            String path = item.getSourceFile().getAbsolutePath();
 
             if (!removedPathSet.contains(path)) {
                 keptItems.add(item);
@@ -932,7 +1234,7 @@ public class MainFrame extends JFrame {
 
         showTransferStatus(
                 "已从发送列表移除 " +
-                removedItems.size() +
+                removedPathSet.size() +
                 " 个文件，当前实际待发送 " +
                 selectedItems.length +
                 " 个文件。"

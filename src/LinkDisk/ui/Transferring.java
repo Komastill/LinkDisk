@@ -11,6 +11,7 @@ import java.io.File;
 import java.util.List;
 
 import javax.swing.BorderFactory;
+import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JLabel;
@@ -33,7 +34,6 @@ public class Transferring extends JPanel {
     private JButton selectButton;
     private JButton sendButton;
     private JButton manageSelectedButton;
-    private JButton openFolderButton;
     private JButton clearSelectedButton;
     private JButton cancelTaskButton;
     private JButton clearTaskButton;
@@ -42,17 +42,18 @@ public class Transferring extends JPanel {
     private DefaultTableModel transferTableModel;
 
     private JTextArea selectedFilesArea;
+    private JScrollPane selectedScrollPane;
+    private JLabel dropHintLabel;
 
     private JProgressBar progressBar;
 
     private JTextArea statusArea;
     
-    private static final Color PAGE_BG = new Color(247, 250, 254);
-    private static final Color CARD_BG = Color.WHITE;
-    private static final Color BORDER = new Color(220, 228, 238);
-    private static final Color TEXT = new Color(24, 38, 56);
-    private static final Color SUBTEXT = new Color(95, 111, 132);
-    private static final Color PRIMARY = new Color(67, 126, 202);
+    private static final Color PAGE_BG = UiStyle.PAGE_BG;
+    private static final Color CARD_BG = UiStyle.CARD_BG;
+    private static final Color BORDER = UiStyle.BORDER;
+    private static final Color TEXT = UiStyle.TEXT;
+    private static final Color SUBTEXT = UiStyle.SUBTEXT;
 
     public Transferring(Font font) {
 
@@ -67,49 +68,32 @@ public class Transferring extends JPanel {
         titleLabel.setFont(font.deriveFont(Font.BOLD, 26f));
         titleLabel.setForeground(TEXT);
 
-        JLabel subtitleLabel = new JLabel("选择文件并发送，实时查看每个任务的传输状态");
+        JLabel subtitleLabel = new JLabel("选择或拖拽文件，确认待发送列表后再开始传输");
         subtitleLabel.setFont(font.deriveFont(Font.PLAIN, 15f));
         subtitleLabel.setForeground(SUBTEXT);
         subtitleLabel.setBorder(BorderFactory.createEmptyBorder(8, 0, 0, 0));
 
-        JPanel buttonPanel = new JPanel();
-        buttonPanel.setLayout(new BoxLayout(buttonPanel, BoxLayout.Y_AXIS));
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
         buttonPanel.setOpaque(false);
         buttonPanel.setBorder(BorderFactory.createEmptyBorder(20, 0, 0, 0));
 
-        JPanel firstButtonRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
-        firstButtonRow.setOpaque(false);
+        selectButton = createActionButton("选择文件", font, 128);
+        manageSelectedButton = createActionButton("管理待发送", font, 140);
+        clearSelectedButton = createActionButton("重置选择", font, 128);
+        cancelTaskButton = createActionButton("取消任务", font, 128);
+        clearTaskButton = createActionButton("清空任务", font, 128);
 
-        JPanel secondButtonRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
-        secondButtonRow.setOpaque(false);
-        secondButtonRow.setBorder(BorderFactory.createEmptyBorder(12, 0, 0, 0));
-
-        selectButton = createActionButton("选择文件", font, false, 128);
-        sendButton = createActionButton("发送文件", font, true, 128);
-        manageSelectedButton = createActionButton("管理已选", font, false, 128);
-        openFolderButton = createActionButton("打开接收文件夹", font, false, 170);
-
-        clearSelectedButton = createActionButton("重置选择", font, false, 128);
-        cancelTaskButton = createActionButton("取消任务", font, false, 128);
-        clearTaskButton = createActionButton("清空任务", font, false, 128);
-
-        firstButtonRow.add(selectButton);
-        firstButtonRow.add(sendButton);
-        firstButtonRow.add(manageSelectedButton);
-        firstButtonRow.add(openFolderButton);
-
-        secondButtonRow.add(clearSelectedButton);
-        secondButtonRow.add(cancelTaskButton);
-        secondButtonRow.add(clearTaskButton);
-
-        buttonPanel.add(firstButtonRow);
-        buttonPanel.add(secondButtonRow);
+        buttonPanel.add(selectButton);
+        buttonPanel.add(manageSelectedButton);
+        buttonPanel.add(clearSelectedButton);
+        buttonPanel.add(cancelTaskButton);
+        buttonPanel.add(clearTaskButton);
 
         headerPanel.add(titleLabel, BorderLayout.NORTH);
         headerPanel.add(subtitleLabel, BorderLayout.CENTER);
         headerPanel.add(buttonPanel, BorderLayout.SOUTH);
 
-        headerPanel.setPreferredSize(new Dimension(0, 170));
+        headerPanel.setPreferredSize(new Dimension(0, 120));
         
         add(headerPanel, BorderLayout.NORTH);
 
@@ -120,10 +104,23 @@ public class Transferring extends JPanel {
         topInfoPanel.setOpaque(false);
         topInfoPanel.setLayout(new BoxLayout(topInfoPanel, BoxLayout.Y_AXIS));
 
-        JLabel selectedTitle = new JLabel("已选文件");
+        JPanel selectedHeaderPanel = new JPanel(new BorderLayout(12, 0));
+        selectedHeaderPanel.setOpaque(false);
+        selectedHeaderPanel.setAlignmentX(LEFT_ALIGNMENT);
+
+        JLabel selectedTitle = new JLabel("待发送文件");
         selectedTitle.setFont(font.deriveFont(Font.BOLD, 18f));
         selectedTitle.setForeground(TEXT);
-        selectedTitle.setAlignmentX(LEFT_ALIGNMENT);
+
+        sendButton = UiStyle.createPrimaryButton("发送文件", font, 180, 46);
+        selectedHeaderPanel.add(selectedTitle, BorderLayout.WEST);
+        selectedHeaderPanel.add(sendButton, BorderLayout.EAST);
+
+        dropHintLabel = new JLabel("拖拽文件或文件夹到下方区域，确认列表后点击右侧“发送文件”。");
+        dropHintLabel.setFont(font.deriveFont(Font.PLAIN, 13f));
+        dropHintLabel.setForeground(SUBTEXT);
+        dropHintLabel.setBorder(BorderFactory.createEmptyBorder(6, 0, 6, 0));
+        dropHintLabel.setAlignmentX(LEFT_ALIGNMENT);
 
         selectedFilesArea = new JTextArea();
         selectedFilesArea.setFont(font.deriveFont(Font.PLAIN, 14f));
@@ -131,24 +128,22 @@ public class Transferring extends JPanel {
         selectedFilesArea.setEditable(false);
         selectedFilesArea.setLineWrap(true);
         selectedFilesArea.setWrapStyleWord(true);
-        selectedFilesArea.setText("暂无已选文件。也可以把文件或文件夹拖到这里。");
-        selectedFilesArea.setBackground(new Color(249, 251, 254));
-        selectedFilesArea.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(BORDER),
-                BorderFactory.createEmptyBorder(10, 12, 10, 12)
-        ));
+        selectedFilesArea.setText("暂无待发送文件。请点击“选择文件”，或把文件/文件夹拖到这里。");
+        selectedFilesArea.setBackground(UiStyle.SOFT_BG);
+        selectedFilesArea.setBorder(UiStyle.createDropNormalBorder());
 
-        JScrollPane selectedScrollPane = new JScrollPane(selectedFilesArea);
-        selectedScrollPane.setPreferredSize(new Dimension(0, 88));
+        selectedScrollPane = new JScrollPane(selectedFilesArea);
+        selectedScrollPane.setPreferredSize(new Dimension(0, 90));
         selectedScrollPane.setAlignmentX(LEFT_ALIGNMENT);
 
         JLabel tableTitle = new JLabel("传输任务");
         tableTitle.setFont(font.deriveFont(Font.BOLD, 18f));
         tableTitle.setForeground(TEXT);
-        tableTitle.setBorder(BorderFactory.createEmptyBorder(14, 0, 0, 0));
+        tableTitle.setBorder(BorderFactory.createEmptyBorder(16, 0, 0, 0));
         tableTitle.setAlignmentX(LEFT_ALIGNMENT);
 
-        topInfoPanel.add(selectedTitle);
+        topInfoPanel.add(selectedHeaderPanel);
+        topInfoPanel.add(dropHintLabel);
         topInfoPanel.add(selectedScrollPane);
         topInfoPanel.add(tableTitle);
 
@@ -160,18 +155,19 @@ public class Transferring extends JPanel {
         transferTable = new JTable(transferTableModel);
         transferTable.setFont(font.deriveFont(Font.PLAIN, 14f));
         transferTable.setRowHeight(30);
+        transferTable.setGridColor(new Color(235, 241, 248));
+        transferTable.setSelectionBackground(UiStyle.PRIMARY_SOFT);
+        transferTable.setSelectionForeground(UiStyle.TEXT);
         transferTable.getTableHeader().setFont(font.deriveFont(Font.BOLD, 14f));
+        transferTable.getTableHeader().setBackground(new Color(244, 248, 253));
+        transferTable.getTableHeader().setForeground(UiStyle.TEXT);
 
         JScrollPane tableScrollPane = new JScrollPane(transferTable);
 
         FileTransferHandler fileTransferHandler = new FileTransferHandler();
 
-        setTransferHandler(fileTransferHandler);
-        tableCard.setTransferHandler(fileTransferHandler);
         selectedFilesArea.setTransferHandler(fileTransferHandler);
         selectedScrollPane.setTransferHandler(fileTransferHandler);
-        transferTable.setTransferHandler(fileTransferHandler);
-        tableScrollPane.setTransferHandler(fileTransferHandler);
 
         tableCard.add(topInfoPanel, BorderLayout.NORTH);
         tableCard.add(tableScrollPane, BorderLayout.CENTER);
@@ -189,25 +185,39 @@ public class Transferring extends JPanel {
         progressBar.setStringPainted(true);
         progressBar.setPreferredSize(new Dimension(0, 26));
 
+        JPanel statusPanel = new JPanel(new BorderLayout(0, 6));
+        statusPanel.setOpaque(false);
+        statusPanel.setPreferredSize(new Dimension(440, 88));
+
+        JLabel statusTitle = new JLabel("操作提示");
+        statusTitle.setFont(font.deriveFont(Font.BOLD, 13f));
+        statusTitle.setForeground(UiStyle.PRIMARY_DARK);
+
         statusArea = new JTextArea();
-        statusArea.setFont(font.deriveFont(Font.PLAIN, 14f));
-        statusArea.setForeground(SUBTEXT);
+        statusArea.setFont(font.deriveFont(Font.BOLD, 14f));
+        statusArea.setForeground(UiStyle.TEXT);
         statusArea.setEditable(false);
         statusArea.setLineWrap(true);
         statusArea.setWrapStyleWord(true);
         statusArea.setOpaque(true);
-        statusArea.setBackground(Color.WHITE);
+        statusArea.setBackground(new Color(244, 248, 253));
         statusArea.setText("请选择文件并连接目标设备。");
         statusArea.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(BORDER),
-                BorderFactory.createEmptyBorder(8, 10, 8, 10)
+                BorderFactory.createLineBorder(new Color(204, 221, 244)),
+                BorderFactory.createEmptyBorder(10, 12, 10, 12)
         ));
 
         JScrollPane statusScrollPane = new JScrollPane(statusArea);
-        statusScrollPane.setPreferredSize(new Dimension(420, 70));
+        statusScrollPane.setPreferredSize(new Dimension(440, 62));
+        statusScrollPane.setMinimumSize(new Dimension(440, 62));
+        statusScrollPane.setMaximumSize(new Dimension(440, 62));
+        statusScrollPane.setBorder(null);
+
+        statusPanel.add(statusTitle, BorderLayout.NORTH);
+        statusPanel.add(statusScrollPane, BorderLayout.CENTER);
 
         bottomPanel.add(progressBar, BorderLayout.CENTER);
-        bottomPanel.add(statusScrollPane, BorderLayout.EAST);
+        bottomPanel.add(statusPanel, BorderLayout.EAST);
         
         add(bottomPanel, BorderLayout.SOUTH);
     }
@@ -222,31 +232,65 @@ public class Transferring extends JPanel {
         return panel;
     }
 
-    private JButton createActionButton(String text, Font font, boolean primary, int width) {
-        JButton button = new JButton(text);
+    private JButton createActionButton(String text, Font font, int width) {
+        return UiStyle.createActionButton(text, font, width, 40);
+    }
 
-        button.setFont(font.deriveFont(Font.BOLD, 14f));
-        button.setFocusPainted(false);
-        button.setOpaque(true);
-        button.setContentAreaFilled(true);
-        button.setPreferredSize(new Dimension(width, 40));
+    private String textBeforeDrag;
 
-        if (primary) {
-            button.setBackground(new Color(231, 241, 255));
-            button.setForeground(TEXT);
-            button.setBorder(BorderFactory.createLineBorder(PRIMARY));
-        } else {
-            button.setBackground(Color.WHITE);
-            button.setForeground(TEXT);
-            button.setBorder(BorderFactory.createLineBorder(BORDER));
+    private void setDropHighlight(boolean active) {
+        if (selectedFilesArea == null) {
+            return;
         }
 
-        return button;
+        if (active) {
+            selectedFilesArea.setBackground(new Color(232, 243, 255));
+            selectedFilesArea.setBorder(UiStyle.createDropActiveBorder());
+
+            if (dropHintLabel != null) {
+                dropHintLabel.setText("已识别拖拽文件，松开鼠标即可加入待发送列表。");
+                dropHintLabel.setForeground(UiStyle.PRIMARY_DARK);
+            }
+
+            String currentText = selectedFilesArea.getText();
+
+            if (textBeforeDrag == null) {
+                textBeforeDrag = currentText;
+            }
+
+            if (currentText == null
+                    || currentText.startsWith("暂无待发送文件")
+                    || currentText.startsWith("松开鼠标")) {
+                selectedFilesArea.setText("松开鼠标即可添加文件或文件夹...\n\n提示：只有拖到这个待发送文件区域才会加入发送列表。");
+            }
+        } else {
+            selectedFilesArea.setBackground(UiStyle.SOFT_BG);
+            selectedFilesArea.setBorder(UiStyle.createDropNormalBorder());
+
+            if (dropHintLabel != null) {
+                dropHintLabel.setText("拖拽文件或文件夹到下方区域，确认列表后点击右侧“发送文件”。");
+                dropHintLabel.setForeground(SUBTEXT);
+            }
+
+            String currentText = selectedFilesArea.getText();
+
+            if (currentText == null || currentText.startsWith("松开鼠标")) {
+                if (textBeforeDrag != null && textBeforeDrag.trim().length() > 0) {
+                    selectedFilesArea.setText(textBeforeDrag);
+                } else {
+                    selectedFilesArea.setText("暂无待发送文件。请点击“选择文件”，或把文件/文件夹拖到这里。");
+                }
+            }
+
+            textBeforeDrag = null;
+        }
     }
 
     public void setSelectedFilesText(String text) {
+        textBeforeDrag = null;
+
         if (text == null || text.trim().length() == 0) {
-            selectedFilesArea.setText("暂无已选文件。也可以把文件或文件夹拖到这里。");
+            selectedFilesArea.setText("暂无待发送文件。请点击“选择文件”，或把文件/文件夹拖到这里。");
         } else {
             selectedFilesArea.setText(text);
             selectedFilesArea.setCaretPosition(0);
@@ -254,7 +298,8 @@ public class Transferring extends JPanel {
     }
 
     public void clearSelectedFilesText() {
-        selectedFilesArea.setText("暂无已选文件。也可以把文件或文件夹拖到这里。");
+        textBeforeDrag = null;
+        selectedFilesArea.setText("暂无待发送文件。请点击“选择文件”，或把文件/文件夹拖到这里。");
     }
 
     public void setStatusMessage(String message) {
@@ -276,10 +321,6 @@ public class Transferring extends JPanel {
     
     public JButton getManageSelectedButton() {
         return manageSelectedButton;
-    }
-
-    public JButton getOpenFolderButton() {
-        return openFolderButton;
     }
 
     public JButton getClearSelectedButton() {
@@ -356,13 +397,16 @@ public class Transferring extends JPanel {
 
         @Override
         public boolean canImport(TransferSupport support) {
-            return support.isDataFlavorSupported(DataFlavor.javaFileListFlavor);
+            boolean supported = support.isDataFlavorSupported(DataFlavor.javaFileListFlavor);
+            setDropHighlight(supported);
+            return supported;
         }
 
         @Override
         public boolean importData(TransferSupport support) {
 
-            if (!canImport(support)) {
+            if (!support.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+                setDropHighlight(false);
                 return false;
             }
 
@@ -382,6 +426,7 @@ public class Transferring extends JPanel {
                         fileDropListener.onFilesDropped(files);
                     }
 
+                    setDropHighlight(false);
                     return true;
                 }
 
@@ -389,6 +434,7 @@ public class Transferring extends JPanel {
                 e.printStackTrace();
             }
 
+            setDropHighlight(false);
             return false;
         }
     }

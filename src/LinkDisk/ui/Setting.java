@@ -3,47 +3,39 @@ package LinkDisk.ui;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
-import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.GridLayout;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.BoxLayout;
 
 public class Setting extends JPanel {
 
     private JButton trustManagerButton;
     private JButton chooseReceiveFolderButton;
-    private JButton clearLogButton;
+    private JButton openReceiveFolderButton;
 
     private JLabel receivePathLabel;
-
-    private JLabel statusLabel;
-
-    private static final Color PAGE_BG = new Color(247, 250, 254);
-    private static final Color CARD_BG = Color.WHITE;
-    private static final Color BORDER = new Color(220, 228, 238);
-    private static final Color TEXT = new Color(24, 38, 56);
-    private static final Color SUBTEXT = new Color(95, 111, 132);
-    private static final Color PRIMARY = new Color(67, 126, 202);
 
     public Setting(Font font) {
 
         setLayout(new BorderLayout(20, 20));
-        setBackground(PAGE_BG);
+        setBackground(UiStyle.PAGE_BG);
         setBorder(BorderFactory.createEmptyBorder(26, 28, 26, 28));
 
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setOpaque(false);
 
-        JLabel titleLabel = new JLabel("设置");
+        JLabel titleLabel = new JLabel("传输设置");
         titleLabel.setFont(font.deriveFont(Font.BOLD, 26f));
-        titleLabel.setForeground(TEXT);
+        titleLabel.setForeground(UiStyle.TEXT);
 
-        JLabel subtitleLabel = new JLabel("管理信任设备、接收目录和系统状态");
+        JLabel subtitleLabel = new JLabel("先确认接收位置和可信设备，再进入文件传输页面发送文件");
         subtitleLabel.setFont(font.deriveFont(Font.PLAIN, 15f));
-        subtitleLabel.setForeground(SUBTEXT);
+        subtitleLabel.setForeground(UiStyle.SUBTEXT);
         subtitleLabel.setBorder(BorderFactory.createEmptyBorder(8, 0, 0, 0));
 
         headerPanel.add(titleLabel, BorderLayout.NORTH);
@@ -51,86 +43,164 @@ public class Setting extends JPanel {
 
         add(headerPanel, BorderLayout.NORTH);
 
-        JPanel card = new JPanel(new BorderLayout(16, 16));
-        card.setBackground(CARD_BG);
-        card.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(BORDER),
-                BorderFactory.createEmptyBorder(22, 22, 22, 22)
+        JPanel mainCard = new JPanel(new BorderLayout(18, 18));
+        UiStyle.setPanelCardStyle(mainCard);
+
+        JPanel actionPanel = new JPanel(new GridLayout(1, 3, 16, 0));
+        actionPanel.setOpaque(false);
+
+        trustManagerButton = createActionButton("管理信任设备", font, 190, 42);
+        chooseReceiveFolderButton = createActionButton("选择接收目录", font, 190, 42);
+        openReceiveFolderButton = createActionButton("打开接收文件夹", font, 190, 42);
+
+        actionPanel.add(createSettingBlock(
+                "信任设备",
+                "查看已授权设备，必要时删除信任关系。",
+                trustManagerButton,
+                font
         ));
 
-        JLabel sectionTitle = new JLabel("安全与存储");
-        sectionTitle.setFont(font.deriveFont(Font.BOLD, 18f));
-        sectionTitle.setForeground(TEXT);
-
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
-        buttonPanel.setOpaque(false);
-
-        trustManagerButton = createActionButton("管理信任设备", font, true, 170);
-        chooseReceiveFolderButton = createActionButton("选择接收目录", font, false, 170);
-        clearLogButton = createActionButton("清空状态提示", font, false, 170);
-
-        buttonPanel.add(trustManagerButton);
-        buttonPanel.add(chooseReceiveFolderButton);
-        buttonPanel.add(clearLogButton);
-
-        receivePathLabel = new JLabel("当前接收目录：未设置");
-        receivePathLabel.setFont(font.deriveFont(Font.PLAIN, 14f));
-        receivePathLabel.setForeground(SUBTEXT);
-        receivePathLabel.setOpaque(true);
-        receivePathLabel.setBackground(new Color(249, 251, 254));
-        receivePathLabel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(BORDER),
-                BorderFactory.createEmptyBorder(12, 12, 12, 12)
+        actionPanel.add(createSettingBlock(
+                "接收目录",
+                "设置接收文件保存位置，避免文件散落。",
+                chooseReceiveFolderButton,
+                font
         ));
-        receivePathLabel.setPreferredSize(new Dimension(0, 48));
 
-        statusLabel = new JLabel("系统状态将在这里显示。");
-        statusLabel.setFont(font.deriveFont(Font.PLAIN, 14f));
-        statusLabel.setForeground(SUBTEXT);
-        statusLabel.setOpaque(true);
-        statusLabel.setBackground(new Color(249, 251, 254));
-        statusLabel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(BORDER),
-                BorderFactory.createEmptyBorder(12, 12, 12, 12)
+        actionPanel.add(createSettingBlock(
+                "接收文件夹",
+                "快速打开当前接收目录，查看已收到文件。",
+                openReceiveFolderButton,
+                font
         ));
-        statusLabel.setPreferredSize(new Dimension(0, 48));
 
-        JPanel top = new JPanel(new BorderLayout(12, 12));
-        top.setOpaque(false);
-        top.add(sectionTitle, BorderLayout.NORTH);
-        top.add(buttonPanel, BorderLayout.CENTER);
+        JPanel centerPanel = new JPanel();
+        centerPanel.setOpaque(false);
+        centerPanel.setLayout(new BoxLayout(centerPanel, BoxLayout.Y_AXIS));
 
-        JPanel bottom = new JPanel(new BorderLayout(0, 12));
-        bottom.setOpaque(false);
-        bottom.add(receivePathLabel, BorderLayout.NORTH);
-        bottom.add(statusLabel, BorderLayout.SOUTH);
+        JPanel receivePanel = createReceivePathPanel(font);
+        JPanel workflowPanel = createWorkflowPanel(font);
 
-        card.add(top, BorderLayout.NORTH);
-        card.add(bottom, BorderLayout.SOUTH);
+        receivePanel.setAlignmentX(LEFT_ALIGNMENT);
+        workflowPanel.setAlignmentX(LEFT_ALIGNMENT);
 
-        add(card, BorderLayout.CENTER);
+        centerPanel.add(receivePanel);
+        centerPanel.add(javax.swing.Box.createVerticalStrut(16));
+        centerPanel.add(workflowPanel);
+
+        mainCard.add(actionPanel, BorderLayout.NORTH);
+        mainCard.add(centerPanel, BorderLayout.CENTER);
+
+        add(mainCard, BorderLayout.CENTER);
     }
 
-    private JButton createActionButton(String text, Font font, boolean primary, int width) {
-        JButton button = new JButton(text);
+    private JPanel createSettingBlock(String title, String description, JButton button, Font font) {
+        JPanel block = new JPanel(new BorderLayout(0, 12));
+        block.setBackground(UiStyle.SOFT_BG);
+        block.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(UiStyle.BORDER),
+                BorderFactory.createEmptyBorder(16, 16, 16, 16)
+        ));
 
-        button.setFont(font.deriveFont(Font.BOLD, 14f));
-        button.setFocusPainted(false);
-        button.setOpaque(true);
-        button.setContentAreaFilled(true);
-        button.setPreferredSize(new Dimension(width, 42));
+        JLabel titleLabel = new JLabel(title);
+        titleLabel.setFont(font.deriveFont(Font.BOLD, 16f));
+        titleLabel.setForeground(UiStyle.TEXT);
 
-        if (primary) {
-            button.setBackground(new Color(231, 241, 255));
-            button.setForeground(TEXT);
-            button.setBorder(BorderFactory.createLineBorder(PRIMARY));
-        } else {
-            button.setBackground(Color.WHITE);
-            button.setForeground(TEXT);
-            button.setBorder(BorderFactory.createLineBorder(BORDER));
-        }
+        JLabel descLabel = new JLabel("<html>" + description + "</html>");
+        descLabel.setFont(font.deriveFont(Font.PLAIN, 13f));
+        descLabel.setForeground(UiStyle.SUBTEXT);
 
-        return button;
+        JPanel textPanel = new JPanel(new BorderLayout(0, 6));
+        textPanel.setOpaque(false);
+        textPanel.add(titleLabel, BorderLayout.NORTH);
+        textPanel.add(descLabel, BorderLayout.CENTER);
+
+        block.add(textPanel, BorderLayout.CENTER);
+        block.add(button, BorderLayout.SOUTH);
+
+        return block;
+    }
+
+    private JPanel createReceivePathPanel(Font font) {
+        JPanel panel = new JPanel(new BorderLayout(12, 8));
+        panel.setBackground(new Color(232, 243, 255));
+        panel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(UiStyle.PRIMARY),
+                BorderFactory.createEmptyBorder(16, 18, 16, 18)
+        ));
+        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 96));
+
+        JLabel titleLabel = new JLabel("当前接收目录");
+        titleLabel.setFont(font.deriveFont(Font.BOLD, 17f));
+        titleLabel.setForeground(UiStyle.TEXT);
+
+        receivePathLabel = new JLabel("received_files");
+        receivePathLabel.setFont(font.deriveFont(Font.BOLD, 15f));
+        receivePathLabel.setForeground(UiStyle.PRIMARY_DARK);
+
+        JLabel hintLabel = new JLabel("收到的文件会保存在这里。需要修改位置时，点击上方“选择接收目录”。");
+        hintLabel.setFont(font.deriveFont(Font.PLAIN, 13f));
+        hintLabel.setForeground(UiStyle.SUBTEXT);
+
+        JPanel textPanel = new JPanel(new BorderLayout(0, 6));
+        textPanel.setOpaque(false);
+        textPanel.add(titleLabel, BorderLayout.NORTH);
+        textPanel.add(receivePathLabel, BorderLayout.CENTER);
+        textPanel.add(hintLabel, BorderLayout.SOUTH);
+
+        panel.add(textPanel, BorderLayout.CENTER);
+        return panel;
+    }
+
+    private JPanel createWorkflowPanel(Font font) {
+        JPanel panel = new JPanel(new BorderLayout(0, 14));
+        panel.setBackground(Color.WHITE);
+        panel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(UiStyle.BORDER),
+                BorderFactory.createEmptyBorder(18, 18, 18, 18)
+        ));
+        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 170));
+
+        JLabel title = new JLabel("推荐操作流程");
+        title.setFont(font.deriveFont(Font.BOLD, 17f));
+        title.setForeground(UiStyle.TEXT);
+
+        JPanel stepsPanel = new JPanel(new GridLayout(1, 3, 14, 0));
+        stepsPanel.setOpaque(false);
+
+        stepsPanel.add(createStepCard("1", "连接设备", "在“设备连接”页面发现并连接目标设备。", font));
+        stepsPanel.add(createStepCard("2", "确认设置", "确认接收目录，必要时管理信任设备。", font));
+        stepsPanel.add(createStepCard("3", "选择并发送", "进入“文件传输”页面，拖拽或选择文件后发送。", font));
+
+        panel.add(title, BorderLayout.NORTH);
+        panel.add(stepsPanel, BorderLayout.CENTER);
+
+        return panel;
+    }
+
+    private JPanel createStepCard(String number, String title, String description, Font font) {
+        JPanel card = new JPanel(new BorderLayout(8, 6));
+        card.setBackground(UiStyle.SOFT_BG);
+        card.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(UiStyle.BORDER),
+                BorderFactory.createEmptyBorder(12, 12, 12, 12)
+        ));
+
+        JLabel titleLabel = new JLabel(number + ". " + title);
+        titleLabel.setFont(font.deriveFont(Font.BOLD, 14f));
+        titleLabel.setForeground(UiStyle.TEXT);
+
+        JLabel descLabel = new JLabel("<html>" + description + "</html>");
+        descLabel.setFont(font.deriveFont(Font.PLAIN, 12.5f));
+        descLabel.setForeground(UiStyle.SUBTEXT);
+
+        card.add(titleLabel, BorderLayout.NORTH);
+        card.add(descLabel, BorderLayout.CENTER);
+        return card;
+    }
+
+    private JButton createActionButton(String text, Font font, int width, int height) {
+        return UiStyle.createActionButton(text, font, width, height);
     }
 
     public JButton getTrustManagerButton() {
@@ -141,8 +211,8 @@ public class Setting extends JPanel {
         return chooseReceiveFolderButton;
     }
 
-    public JButton getClearLogButton() {
-        return clearLogButton;
+    public JButton getOpenReceiveFolderButton() {
+        return openReceiveFolderButton;
     }
 
     public void appendLog(String text) {
@@ -150,16 +220,11 @@ public class Setting extends JPanel {
     }
 
     public void clearLog() {
-        setStatusMessage("状态提示已清空。");
+        setStatusMessage("");
     }
 
     public void setStatusMessage(String message) {
-        if (message == null) {
-            message = "";
-        }
-
-        message = message.replace("\n", "  ");
-        statusLabel.setText(message);
+        // 设置页不再显示全局状态提示，保留方法是为了兼容 MainFrame 的状态同步调用。
     }
 
     public void setReceivePathText(String path) {
@@ -167,6 +232,6 @@ public class Setting extends JPanel {
             path = "未设置";
         }
 
-        receivePathLabel.setText("当前接收目录：" + path);
+        receivePathLabel.setText(path);
     }
 }
