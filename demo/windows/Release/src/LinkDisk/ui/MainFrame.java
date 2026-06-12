@@ -35,6 +35,7 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 
 public class MainFrame extends JFrame {
+    private static MainFrame instance;
 
     private SideNavigation sidebarPanel;
     private Device devicePanel;
@@ -424,6 +425,7 @@ public class MainFrame extends JFrame {
     }
 
     public MainFrame() {
+        instance = this;
 
         setTitle("LinkDisk");
         setSize(1100, 720);
@@ -1847,6 +1849,24 @@ public class MainFrame extends JFrame {
         });
     }
 
+    /**
+     * 供外部（如 Flutter）直接添加文件到待发送列表。
+     * 调用后会自动切换到传输页面。
+     */
+    public static void quickAddFiles(File[] roots) {
+        if (instance != null) {
+            SwingUtilities.invokeLater(() -> {
+                instance.addSelectedRoots(roots, "Flutter");
+                instance.switchToTransferTab();
+            });
+        }
+    }
+
+    private void switchToTransferTab() {
+        cardLayout.show(contentPanel, "transfer");
+        sidebarPanel.setActivePage("transfer");
+    }
+    
     public static void main(String[] args) {
         try {
             HttpApiServer.start(8080);

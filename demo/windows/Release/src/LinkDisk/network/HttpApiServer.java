@@ -1,6 +1,7 @@
 package LinkDisk.network;
 
 import com.sun.net.httpserver.*;
+import LinkDisk.ui.MainFrame;
 import java.net.InetSocketAddress;
 import java.util.*;
 import java.io.*;
@@ -64,6 +65,71 @@ public class HttpApiServer {
             exchange.close();
         });
 
+        // 接收 Flutter 发来的文件列表并添加到待发送
+        server.createContext("/api/addFiles", exchange -> {
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            try {
+                // 读取请求体
+                BufferedReader reader = new BufferedReader(new InputStreamReader(exchange.getRequestBody(), "utf-8"));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line);
+                }
+                String body = sb.toString();
+
+                // 手动解析 JSON（不依赖任何外部库）
+                // 格式：{"filePaths":["路径1","路径2"]}
+                List<String> paths = new ArrayList<>();
+                int start = body.indexOf("[");
+                int end = body.indexOf("]");
+                if (start != -1 && end != -1 && end > start) {
+                    String arrStr = body.substring(start + 1, end);
+                    // 分割每个字符串（假设路径不含引号内的逗号）
+                    boolean inQuotes = false;
+                    StringBuilder current = new StringBuilder();
+                    for (char c : arrStr.toCharArray()) {
+                        if (c == '"') {
+                            inQuotes = !inQuotes;
+                        } else if (c == ',' && !inQuotes) {
+                            paths.add(current.toString().trim());
+                            current.setLength(0);
+                        } else {
+                            current.append(c);
+                        }
+                    }
+                    if (current.length() > 0) {
+                        paths.add(current.toString().trim());
+                    }
+                    // 清理首尾引号
+                    for (int i = 0; i < paths.size(); i++) {
+                        String p = paths.get(i);
+                        if (p.startsWith("\"") && p.endsWith("\"")) {
+                            p = p.substring(1, p.length() - 1);
+                        }
+                        paths.set(i, p);
+                    }
+                }
+
+                File[] files = paths.stream()
+                        .map(File::new)
+                        .toArray(File[]::new);
+
+                // 调用 MainFrame 添加入口
+                MainFrame.quickAddFiles(files);
+
+                String resp = "{\"code\":0,\"msg\":\"文件已添加\"}";
+                exchange.sendResponseHeaders(200, resp.getBytes().length);
+                exchange.getResponseBody().write(resp.getBytes());
+            } catch (Exception e) {
+                e.printStackTrace();
+                String err = "{\"code\":-1,\"msg\":\"" + e.getMessage() + "\"}";
+                exchange.sendResponseHeaders(500, err.getBytes().length);
+                exchange.getResponseBody().write(err.getBytes());
+            }
+            exchange.close();
+        });
+
         server.setExecutor(null);
         server.start();
         System.out.println("✅ Java 本地接口已启动：http://127.0.0.1:" + port);
@@ -71,10 +137,12 @@ public class HttpApiServer {
 
     private static Map<String, String> parseQuery(String query) {
         Map<String, String> map = new HashMap<>();
-        if (query == null) return map;
+        if (query == null)
+            return map;
         for (String pair : query.split("&")) {
             String[] kv = pair.split("=");
-            if (kv.length == 2) map.put(kv[0], kv[1]);
+            if (kv.length == 2)
+                map.put(kv[0], kv[1]);
         }
         return map;
     }
