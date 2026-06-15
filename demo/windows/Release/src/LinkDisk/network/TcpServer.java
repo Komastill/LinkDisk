@@ -8,6 +8,7 @@ import java.net.Socket;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.util.Arrays;
 
 public class TcpServer {
 
@@ -31,8 +32,7 @@ public class TcpServer {
                 String clientIp,
                 String fileName,
                 String savePath,
-                long fileSize
-        );
+                long fileSize);
 
         void onFileReceiveProgress(
                 String clientIp,
@@ -40,15 +40,13 @@ public class TcpServer {
                 String savePath,
                 long fileSize,
                 long receivedBytes,
-                int progress
-        );
+                int progress);
 
         void onFileReceived(
                 String clientIp,
                 String fileName,
                 String savePath,
-                long fileSize
-        );
+                long fileSize);
     }
 
     private static String formatFileSize(long size) {
@@ -98,8 +96,7 @@ public class TcpServer {
 
                         Socket socket = serverSocket.accept();
 
-                        String clientIp =
-                                socket.getInetAddress().getHostAddress();
+                        String clientIp = socket.getInetAddress().getHostAddress();
 
                         System.out.println("收到连接请求来自：" + clientIp);
 
@@ -136,11 +133,9 @@ public class TcpServer {
 
         try {
 
-            DataInputStream in =
-                    new DataInputStream(socket.getInputStream());
+            DataInputStream in = new DataInputStream(socket.getInputStream());
 
-            DataOutputStream out =
-                    new DataOutputStream(socket.getOutputStream());
+            DataOutputStream out = new DataOutputStream(socket.getOutputStream());
 
             String command = in.readUTF();
 
@@ -189,6 +184,32 @@ public class TcpServer {
 
                 receiveFiles(in, clientIp);
 
+            } else if ("LIST".equals(command)) {
+                // 列出远程目录
+                if (!authorized) {
+                    out.writeUTF("DENIED");
+                    out.flush();
+                } else {
+                    out.writeUTF("OK");
+                    out.flush();
+                    String path = in.readUTF();
+                    String json = listDirectory(path);
+                    out.writeUTF(json);
+                    out.flush();
+                }
+            } else if ("DRIVES".equals(command)) {
+                // 列出远程盘符
+                if (!authorized) {
+                    out.writeUTF("DENIED");
+                    out.flush();
+                } else {
+                    out.writeUTF("OK");
+                    out.flush();
+                    String json = listDrives();
+                    out.writeUTF(json);
+                    out.flush();
+                }
+
             } else {
 
                 out.writeUTF("DENIED");
@@ -234,12 +255,12 @@ public class TcpServer {
             }
 
             part = part.replace(":", "_")
-                       .replace("*", "_")
-                       .replace("?", "_")
-                       .replace("\"", "_")
-                       .replace("<", "_")
-                       .replace(">", "_")
-                       .replace("|", "_");
+                    .replace("*", "_")
+                    .replace("?", "_")
+                    .replace("\"", "_")
+                    .replace("<", "_")
+                    .replace(">", "_")
+                    .replace("|", "_");
 
             if (safePath.length() > 0) {
                 safePath.append(File.separator);
@@ -287,7 +308,7 @@ public class TcpServer {
 
         return saveFile;
     }
-    
+
     private static void receiveFiles(DataInputStream in, String clientIp) {
 
         try {
@@ -306,10 +327,9 @@ public class TcpServer {
 
                 System.out.println(
                         "接收文件：" +
-                        safeRelativePath +
-                        " 大小：" +
-                        formatFileSize(fileSize)
-                );
+                                safeRelativePath +
+                                " 大小：" +
+                                formatFileSize(fileSize));
 
                 File receiveDir = new File(AppSettings.getReceiveDir());
 
@@ -340,12 +360,10 @@ public class TcpServer {
                             clientIp,
                             safeRelativePath,
                             savePath,
-                            fileSize
-                    );
+                            fileSize);
                 }
 
-                FileOutputStream fileOut =
-                        new FileOutputStream(tempFile);
+                FileOutputStream fileOut = new FileOutputStream(tempFile);
 
                 byte[] buffer = new byte[8192];
 
@@ -360,8 +378,7 @@ public class TcpServer {
                     len = in.read(
                             buffer,
                             0,
-                            (int) Math.min(buffer.length, fileSize - received)
-                    );
+                            (int) Math.min(buffer.length, fileSize - received));
 
                     if (len == -1) {
                         break;
@@ -389,8 +406,7 @@ public class TcpServer {
                                     savePath,
                                     fileSize,
                                     received,
-                                    progress
-                            );
+                                    progress);
                         }
                     }
                 }
@@ -402,8 +418,7 @@ public class TcpServer {
                     Files.move(
                             tempFile.toPath(),
                             saveFile.toPath(),
-                            StandardCopyOption.REPLACE_EXISTING
-                    );
+                            StandardCopyOption.REPLACE_EXISTING);
 
                     System.out.println(safeRelativePath + " 接收完成");
                     System.out.println("实际保存路径：" + saveFile.getAbsolutePath());
@@ -414,8 +429,7 @@ public class TcpServer {
                                 clientIp,
                                 safeRelativePath,
                                 saveFile.getAbsolutePath(),
-                                received
-                        );
+                                received);
                     }
 
                 } else {
@@ -426,8 +440,7 @@ public class TcpServer {
 
                     System.out.println(
                             safeRelativePath +
-                            " 接收失败：文件未完整接收，已删除临时文件"
-                    );
+                                    " 接收失败：文件未完整接收，已删除临时文件");
                 }
             }
 
@@ -436,5 +449,62 @@ public class TcpServer {
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    private static String listDirectory(String path) {
+        StringBuilder json = new StringBuilder();
+        json.append("{\"path\":\"").append(escapeJson(path)).append("\",\"files\":[");
+        File dir = new File(path);
+        if (dir.exists() && dir.isDirectory()) {
+            File[] files = dir.listFiles();
+            if (files != null) {
+                Arrays.sort(files, (a, b) -> {
+                    if (a.isDirectory() && !b.isDirectory())
+                        return -1;
+                    if (!a.isDirectory() && b.isDirectory())
+                        return 1;
+                    return a.getName().compareToIgnoreCase(b.getName());
+                });
+                boolean first = true;
+                for (File f : files) {
+                    if (f.isHidden() || f.getName().startsWith("$"))
+                        continue;
+                    if (!first)
+                        json.append(",");
+                    first = false;
+                    json.append("{");
+                    json.append("\"name\":\"").append(escapeJson(f.getName())).append("\",");
+                    json.append("\"isDir\":").append(f.isDirectory()).append(",");
+                    json.append("\"size\":").append(f.isFile() ? f.length() : 0).append(",");
+                    json.append("\"modified\":\"").append(new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+                            .format(new java.util.Date(f.lastModified()))).append("\"");
+                    json.append("}");
+                }
+            }
+        }
+        json.append("]}");
+        return json.toString();
+    }
+
+    private static String listDrives() {
+        StringBuilder json = new StringBuilder();
+        json.append("{\"drives\":[");
+        File[] roots = File.listRoots();
+        boolean first = true;
+        for (File root : roots) {
+            if (!first)
+                json.append(",");
+            first = false;
+            String path = root.getAbsolutePath().replace("\\", "/");
+            json.append("\"").append(escapeJson(path)).append("\"");
+        }
+        json.append("]}");
+        return json.toString();
+    }
+
+    private static String escapeJson(String s) {
+        if (s == null)
+            return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }

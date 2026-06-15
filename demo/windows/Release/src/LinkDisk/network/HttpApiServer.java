@@ -130,6 +130,79 @@ public class HttpApiServer {
             exchange.close();
         });
 
+        // 获取信任设备列表
+        server.createContext("/api/trustedDevices", exchange -> {
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            try {
+                AuthManager auth = new AuthManager();
+                List<String> devices = auth.getAllTrustedDevices();
+                StringBuilder json = new StringBuilder();
+                json.append("{\"devices\":[");
+                boolean first = true;
+                for (String ip : devices) {
+                    if (!first)
+                        json.append(",");
+                    first = false;
+                    json.append("\"").append(ip).append("\"");
+                }
+                json.append("]}");
+                byte[] resp = json.toString().getBytes("utf-8");
+                exchange.sendResponseHeaders(200, resp.length);
+                exchange.getResponseBody().write(resp);
+            } catch (Exception e) {
+                e.printStackTrace();
+                exchange.sendResponseHeaders(500, 0);
+            }
+            exchange.close();
+        });
+
+        // 获取远程盘符
+        server.createContext("/api/remoteDrives", exchange -> {
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            try {
+                String query = exchange.getRequestURI().getQuery();
+                Map<String, String> params = parseQuery(query);
+                String targetIp = params.get("targetIp");
+                if (targetIp == null || targetIp.isEmpty()) {
+                    exchange.sendResponseHeaders(400, 0);
+                    exchange.close();
+                    return;
+                }
+                String json = TcpClient.getRemoteDrives(targetIp);
+                byte[] resp = json.getBytes("utf-8");
+                exchange.sendResponseHeaders(200, resp.length);
+                exchange.getResponseBody().write(resp);
+            } catch (Exception e) {
+                e.printStackTrace();
+                exchange.sendResponseHeaders(500, 0);
+            }
+            exchange.close();
+        });
+
+        // 获取远程文件列表
+        server.createContext("/api/listRemoteFiles", exchange -> {
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            try {
+                String query = exchange.getRequestURI().getQuery();
+                Map<String, String> params = parseQuery(query);
+                String targetIp = params.get("targetIp");
+                String path = params.get("path");
+                if (targetIp == null || path == null) {
+                    exchange.sendResponseHeaders(400, 0);
+                    exchange.close();
+                    return;
+                }
+                String json = TcpClient.listRemoteFiles(targetIp, path);
+                byte[] resp = json.getBytes("utf-8");
+                exchange.sendResponseHeaders(200, resp.length);
+                exchange.getResponseBody().write(resp);
+            } catch (Exception e) {
+                e.printStackTrace();
+                exchange.sendResponseHeaders(500, 0);
+            }
+            exchange.close();
+        });
+
         server.setExecutor(null);
         server.start();
         System.out.println("✅ Java 本地接口已启动：http://127.0.0.1:" + port);

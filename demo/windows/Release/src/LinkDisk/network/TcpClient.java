@@ -44,7 +44,7 @@ public class TcpClient {
     public interface CancelChecker {
         boolean isCancelled(int fileIndex, String relativePath);
     }
-    
+
     public static ConnectResult connectDevice(String ip) {
 
         Socket socket = null;
@@ -56,8 +56,7 @@ public class TcpClient {
 
             socket.connect(
                     new InetSocketAddress(ip, TCP_PORT),
-                    CONNECT_TIMEOUT
-            );
+                    CONNECT_TIMEOUT);
 
             socket.setSoTimeout(READ_TIMEOUT);
 
@@ -76,8 +75,7 @@ public class TcpClient {
                         false,
                         null,
                         null,
-                        "对方拒绝连接"
-                );
+                        "对方拒绝连接");
             }
 
             String deviceName = in.readUTF();
@@ -88,8 +86,7 @@ public class TcpClient {
                     true,
                     deviceName,
                     platform,
-                    "连接成功"
-            );
+                    "连接成功");
 
         } catch (java.net.SocketTimeoutException e) {
 
@@ -97,8 +94,7 @@ public class TcpClient {
                     false,
                     null,
                     null,
-                    "连接超时：目标设备无响应"
-            );
+                    "连接超时：目标设备无响应");
 
         } catch (java.net.ConnectException e) {
 
@@ -106,8 +102,7 @@ public class TcpClient {
                     false,
                     null,
                     null,
-                    "连接失败：目标设备未启动 LinkDisk 或端口未开放"
-            );
+                    "连接失败：目标设备未启动 LinkDisk 或端口未开放");
 
         } catch (Exception e) {
 
@@ -117,8 +112,7 @@ public class TcpClient {
                     false,
                     null,
                     null,
-                    "连接失败：" + e.getMessage()
-            );
+                    "连接失败：" + e.getMessage());
 
         } finally {
 
@@ -133,17 +127,15 @@ public class TcpClient {
     public static SendResult sendFiles(
             TransferFileItem[] items,
             String ip,
-            ProgressListener listener
-    ) {
+            ProgressListener listener) {
         return sendFiles(items, ip, listener, null);
     }
-    
+
     public static SendResult sendFiles(
             TransferFileItem[] items,
             String ip,
             ProgressListener listener,
-            CancelChecker cancelChecker
-    ) {
+            CancelChecker cancelChecker) {
 
         Socket socket = null;
         DataOutputStream out = null;
@@ -154,8 +146,7 @@ public class TcpClient {
 
             socket.connect(
                     new InetSocketAddress(ip, TCP_PORT),
-                    CONNECT_TIMEOUT
-            );
+                    CONNECT_TIMEOUT);
 
             socket.setSoTimeout(READ_TIMEOUT);
 
@@ -172,8 +163,7 @@ public class TcpClient {
             if (!"OK".equals(result)) {
                 return new SendResult(
                         false,
-                        "对方拒绝连接，文件未发送"
-                );
+                        "对方拒绝连接，文件未发送");
             }
 
             out.writeInt(items.length);
@@ -215,7 +205,7 @@ public class TcpClient {
 
                     continue;
                 }
-                
+
                 System.out.println("准备发送文件：" + file.getAbsolutePath());
 
                 System.out.println("发送相对路径：" + relativePath);
@@ -279,22 +269,19 @@ public class TcpClient {
 
             return new SendResult(
                     true,
-                    "文件发送完成"
-            );
+                    "文件发送完成");
 
         } catch (java.net.SocketTimeoutException e) {
 
             return new SendResult(
                     false,
-                    "发送失败：连接超时或对方无响应"
-            );
+                    "发送失败：连接超时或对方无响应");
 
         } catch (java.net.ConnectException e) {
 
             return new SendResult(
                     false,
-                    "发送失败：目标设备未启动 LinkDisk 或端口未开放"
-            );
+                    "发送失败：目标设备未启动 LinkDisk 或端口未开放");
 
         } catch (Exception e) {
 
@@ -302,8 +289,7 @@ public class TcpClient {
 
             return new SendResult(
                     false,
-                    "发送失败：" + e.getMessage()
-            );
+                    "发送失败：" + e.getMessage());
 
         } finally {
 
@@ -334,6 +320,56 @@ public class TcpClient {
 
         value = value / 1000;
         return String.format(java.util.Locale.US, "%.2f GB", value);
+    }
+
+    /**
+     * 获取远程设备盘符列表（JSON）
+     */
+    public static String getRemoteDrives(String ip) throws Exception {
+        return sendCommand(ip, "DRIVES", null);
+    }
+
+    /**
+     * 获取远程设备指定路径下的文件列表（JSON）
+     */
+    public static String listRemoteFiles(String ip, String path) throws Exception {
+        return sendCommand(ip, "LIST", path);
+    }
+
+    // 通用命令发送方法
+    private static String sendCommand(String ip, String command, String param) throws Exception {
+        Socket socket = null;
+        DataOutputStream out = null;
+        DataInputStream in = null;
+        try {
+            socket = new Socket();
+            socket.connect(new InetSocketAddress(ip, TCP_PORT), CONNECT_TIMEOUT);
+            socket.setSoTimeout(READ_TIMEOUT);
+
+            out = new DataOutputStream(socket.getOutputStream());
+            in = new DataInputStream(socket.getInputStream());
+
+            out.writeUTF(command);
+            out.flush();
+
+            String result = in.readUTF();
+            if (!"OK".equals(result)) {
+                throw new Exception("对方拒绝请求：" + result);
+            }
+
+            if (param != null) {
+                out.writeUTF(param);
+                out.flush();
+            }
+
+            String response = in.readUTF();
+            return response;
+
+        } finally {
+            closeQuietly(in);
+            closeQuietly(out);
+            closeQuietly(socket);
+        }
     }
 
     private static void closeQuietly(java.io.Closeable closeable) {
