@@ -3,7 +3,10 @@ package LinkDisk.network;
 import java.io.*;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.Inet4Address;
 import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.util.Enumeration;
 import java.util.UUID;
 
 public class UdpListener {
@@ -41,8 +44,7 @@ public class UdpListener {
                     System.out.println("本机平台：" + localPlatform);
 
                     while (isRunning) {
-                        DatagramPacket packet =
-                                new DatagramPacket(buffer, buffer.length);
+                        DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
 
                         listenSocket.receive(packet);
 
@@ -52,8 +54,7 @@ public class UdpListener {
                                 packet.getData(),
                                 0,
                                 packet.getLength(),
-                                "UTF-8"
-                        );
+                                "UTF-8");
 
                         String[] parts = message.split("\\|", 4);
 
@@ -72,8 +73,7 @@ public class UdpListener {
                                     "发现远程设备：" +
                                             deviceName + " / " +
                                             platform + " / " +
-                                            ip
-                            );
+                                            ip);
 
                             listener.onDeviceFound(ip, deviceName, platform);
                         }
@@ -100,11 +100,10 @@ public class UdpListener {
 
                     while (isRunning) {
 
-                        String message =
-                                PREFIX + "|" +
-                                        localDeviceId + "|" +
-                                        localDeviceName + "|" +
-                                        localPlatform;
+                        String message = PREFIX + "|" +
+                                localDeviceId + "|" +
+                                localDeviceName + "|" +
+                                localPlatform;
 
                         byte[] data = message.getBytes("UTF-8");
 
@@ -112,8 +111,7 @@ public class UdpListener {
                                 data,
                                 data.length,
                                 InetAddress.getByName("255.255.255.255"),
-                                UDP_PORT
-                        );
+                                UDP_PORT);
 
                         broadcastSocket.send(packet);
 
@@ -156,8 +154,7 @@ public class UdpListener {
 
         try {
             if (file.exists()) {
-                BufferedReader reader =
-                        new BufferedReader(new FileReader(file));
+                BufferedReader reader = new BufferedReader(new FileReader(file));
 
                 String id = reader.readLine();
 
@@ -218,7 +215,7 @@ public class UdpListener {
             return System.getProperty("os.name");
         }
     }
-    
+
     public static String getThisDeviceName() {
         return localDeviceName;
     }
@@ -229,14 +226,13 @@ public class UdpListener {
 
     public static boolean isLocalIp(String ip) {
         try {
-            java.util.Enumeration<java.net.NetworkInterface> interfaces =
-                    java.net.NetworkInterface.getNetworkInterfaces();
+            java.util.Enumeration<java.net.NetworkInterface> interfaces = java.net.NetworkInterface
+                    .getNetworkInterfaces();
 
             while (interfaces.hasMoreElements()) {
                 java.net.NetworkInterface ni = interfaces.nextElement();
 
-                java.util.Enumeration<java.net.InetAddress> addresses =
-                        ni.getInetAddresses();
+                java.util.Enumeration<java.net.InetAddress> addresses = ni.getInetAddresses();
 
                 while (addresses.hasMoreElements()) {
                     java.net.InetAddress address = addresses.nextElement();
@@ -251,5 +247,26 @@ public class UdpListener {
         }
 
         return false;
+    }
+
+    public static String getLocalIp() {
+        try {
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface ni = interfaces.nextElement();
+                if (ni.isLoopback() || !ni.isUp())
+                    continue;
+                Enumeration<InetAddress> addresses = ni.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    InetAddress addr = addresses.nextElement();
+                    if (addr instanceof Inet4Address) {
+                        return addr.getHostAddress();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
     }
 }

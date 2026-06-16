@@ -6,9 +6,12 @@ import java.io.FileOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.io.File;
+import java.io.FileInputStream;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.text.SimpleDateFormat;
 import java.util.Arrays;
+import java.util.Date;
 
 public class TcpServer {
 
@@ -185,36 +188,129 @@ public class TcpServer {
                 receiveFiles(in, clientIp);
 
             } else if ("LIST".equals(command)) {
-                // 列出远程目录
-                if (!authorized) {
-                    out.writeUTF("DENIED");
-                    out.flush();
-                } else {
-                    out.writeUTF("OK");
-                    out.flush();
-                    String path = in.readUTF();
-                    String json = listDirectory(path);
-                    out.writeUTF(json);
-                    out.flush();
-                }
-            } else if ("DRIVES".equals(command)) {
-                // 列出远程盘符
-                if (!authorized) {
-                    out.writeUTF("DENIED");
-                    out.flush();
-                } else {
-                    out.writeUTF("OK");
-                    out.flush();
-                    String json = listDrives();
-                    out.writeUTF(json);
-                    out.flush();
-                }
-
-            } else {
-
-                out.writeUTF("DENIED");
+                out.writeUTF("OK");
+                out.flush();
+                String path = in.readUTF();
+                String json = listDirectory(path);
+                out.writeUTF(json);
                 out.flush();
 
+            } else if ("DRIVES".equals(command)) {
+                out.writeUTF("OK");
+                out.flush();
+                String json = listDrives();
+                out.writeUTF(json);
+                out.flush();
+
+            } else if ("DELETE".equals(command)) {
+                out.writeUTF("OK");
+                out.flush();
+                String targetPath = in.readUTF();
+                boolean success = false;
+                try {
+                    if (isSafePath(targetPath)) {
+                        File f = new File(targetPath);
+                        success = f.delete();
+                        if (f.isDirectory() && !success) {
+                            success = deleteDir(f);
+                        }
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+                out.writeUTF(success ? "OK" : "FAILED");
+                out.flush();
+
+            } else if ("MKDIR".equals(command)) {
+                out.writeUTF("OK");
+                out.flush();
+                String dirPath = in.readUTF();
+                boolean success = false;
+                try {
+                    if (isSafePath(dirPath)) {
+                        success = new File(dirPath).mkdirs();
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+                out.writeUTF(success ? "OK" : "FAILED");
+                out.flush();
+
+            } else if ("RENAME".equals(command)) {
+                out.writeUTF("OK");
+                out.flush();
+                String oldPath = in.readUTF();
+                String newPath = in.readUTF();
+                boolean success = false;
+                try {
+                    if (isSafePath(oldPath) && isSafePath(newPath)) {
+                        success = new File(oldPath).renameTo(new File(newPath));
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+                out.writeUTF(success ? "OK" : "FAILED");
+                out.flush();
+
+            } else if ("MOVE".equals(command)) {
+                out.writeUTF("OK");
+                out.flush();
+                String src = in.readUTF();
+                String dest = in.readUTF();
+                boolean success = false;
+                try {
+                    if (isSafePath(src) && isSafePath(dest)) {
+                        Files.move(new File(src).toPath(), new File(dest).toPath(),
+                                StandardCopyOption.REPLACE_EXISTING);
+                        success = true;
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+                out.writeUTF(success ? "OK" : "FAILED");
+                out.flush();
+                
+            } else if ("COPY".equals(command)) {
+                out.writeUTF("OK");
+                out.flush();
+                String src = in.readUTF();
+                String dest = in.readUTF();
+                boolean success = false;
+                try {
+                    if (isSafePath(src) && isSafePath(dest)) {
+                        Files.copy(new File(src).toPath(), new File(dest).toPath(),
+                                StandardCopyOption.REPLACE_EXISTING);
+                        success = true;
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+                out.writeUTF(success ? "OK" : "FAILED");
+                out.flush();
+
+            } else if ("DOWNLOAD".equals(command)) {
+                String filePath = in.readUTF();
+                File file = new File(filePath);
+                if (file.exists() && file.isFile() && isSafePath(filePath)) {
+                    out.writeUTF("OK");
+                    out.writeLong(file.length());
+                    out.flush();
+                    // 发送文件内容
+                    FileInputStream fileIn = new FileInputStream(file);
+                    byte[] buffer = new byte[8192];
+                    int len;
+                    while ((len = fileIn.read(buffer)) != -1) {
+                        out.write(buffer, 0, len);
+                    }
+                    fileIn.close();
+                } else {
+                    out.writeUTF("FAILED");
+                }
+                out.flush();
+                
+            } else {
+                out.writeUTF("DENIED");
+                out.flush();
                 System.out.println("未知请求类型：" + command);
             }
 
@@ -226,6 +322,28 @@ public class TcpServer {
             System.err.println("处理设备 " + clientIp + " 连接时出错：" + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    private static boolean isSafePath(String path) {
+        // 黑名单：禁止操作系统关键目录
+        String lower = path.toLowerCase();
+        String[] forbidden = { "c:\\windows", "c:\\program files", "c:\\program files (x86)", "system32" };
+        for (String f : forbidden) {
+            if (lower.contains(f))
+                return false;
+        }
+        return true;
+    }
+
+    private static boolean deleteDir(File dir) {
+        File[] contents = dir.listFiles();
+        if (contents != null) {
+            for (File f : contents) {
+                if (!deleteDir(f))
+                    return false;
+            }
+        }
+        return dir.delete();
     }
 
     private static String sanitizeRelativePath(String path) {
@@ -476,8 +594,8 @@ public class TcpServer {
                     json.append("\"name\":\"").append(escapeJson(f.getName())).append("\",");
                     json.append("\"isDir\":").append(f.isDirectory()).append(",");
                     json.append("\"size\":").append(f.isFile() ? f.length() : 0).append(",");
-                    json.append("\"modified\":\"").append(new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
-                            .format(new java.util.Date(f.lastModified()))).append("\"");
+                    json.append("\"modified\":\"").append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+                            .format(new Date(f.lastModified()))).append("\"");
                     json.append("}");
                 }
             }
