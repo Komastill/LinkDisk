@@ -1,4 +1,4 @@
-# linkdisk_flutter
+# my_app
 
 A new Flutter project.
 
