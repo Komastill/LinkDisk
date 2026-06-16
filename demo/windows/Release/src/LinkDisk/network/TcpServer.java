@@ -8,6 +8,7 @@ import java.net.Socket;
 import java.io.File;
 import java.io.FileInputStream;
 import java.nio.file.Files;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.StandardCopyOption;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
@@ -142,6 +143,8 @@ public class TcpServer {
 
             String command = in.readUTF();
 
+            System.out.println("收到命令：" + command + " 来自：" + clientIp);
+
             boolean authorized = true;
 
             if (!authManager.isTrusted(clientIp)) {
@@ -190,7 +193,7 @@ public class TcpServer {
             } else if ("LIST".equals(command)) {
                 out.writeUTF("OK");
                 out.flush();
-                String path = in.readUTF();
+                String path = normalizeRemotePath(in.readUTF());
                 String json = listDirectory(path);
                 out.writeUTF(json);
                 out.flush();
@@ -205,7 +208,7 @@ public class TcpServer {
             } else if ("DELETE".equals(command)) {
                 out.writeUTF("OK");
                 out.flush();
-                String targetPath = in.readUTF();
+                String targetPath = normalizeRemotePath(in.readUTF());
                 boolean success = false;
                 try {
                     if (isSafePath(targetPath)) {
@@ -224,7 +227,7 @@ public class TcpServer {
             } else if ("MKDIR".equals(command)) {
                 out.writeUTF("OK");
                 out.flush();
-                String dirPath = in.readUTF();
+                String dirPath = normalizeRemotePath(in.readUTF());
                 boolean success = false;
                 try {
                     if (isSafePath(dirPath)) {
@@ -239,8 +242,8 @@ public class TcpServer {
             } else if ("RENAME".equals(command)) {
                 out.writeUTF("OK");
                 out.flush();
-                String oldPath = in.readUTF();
-                String newPath = in.readUTF();
+                String oldPath = normalizeRemotePath(in.readUTF());
+                String newPath = normalizeRemotePath(in.readUTF());
                 boolean success = false;
                 try {
                     if (isSafePath(oldPath) && isSafePath(newPath)) {
@@ -255,8 +258,8 @@ public class TcpServer {
             } else if ("MOVE".equals(command)) {
                 out.writeUTF("OK");
                 out.flush();
-                String src = in.readUTF();
-                String dest = in.readUTF();
+                String src = normalizeRemotePath(in.readUTF());
+                String dest = normalizeRemotePath(in.readUTF());
                 boolean success = false;
                 try {
                     if (isSafePath(src) && isSafePath(dest)) {
@@ -269,12 +272,12 @@ public class TcpServer {
                 }
                 out.writeUTF(success ? "OK" : "FAILED");
                 out.flush();
-                
+
             } else if ("COPY".equals(command)) {
                 out.writeUTF("OK");
                 out.flush();
-                String src = in.readUTF();
-                String dest = in.readUTF();
+                String src = normalizeRemotePath(in.readUTF());
+                String dest = normalizeRemotePath(in.readUTF());
                 boolean success = false;
                 try {
                     if (isSafePath(src) && isSafePath(dest)) {
@@ -289,13 +292,12 @@ public class TcpServer {
                 out.flush();
 
             } else if ("DOWNLOAD".equals(command)) {
-                String filePath = in.readUTF();
+                String filePath = normalizeRemotePath(in.readUTF());
                 File file = new File(filePath);
                 if (file.exists() && file.isFile() && isSafePath(filePath)) {
                     out.writeUTF("OK");
                     out.writeLong(file.length());
                     out.flush();
-                    // 发送文件内容
                     FileInputStream fileIn = new FileInputStream(file);
                     byte[] buffer = new byte[8192];
                     int len;
@@ -307,7 +309,7 @@ public class TcpServer {
                     out.writeUTF("FAILED");
                 }
                 out.flush();
-                
+
             } else {
                 out.writeUTF("DENIED");
                 out.flush();
@@ -324,10 +326,36 @@ public class TcpServer {
         }
     }
 
+    private static String normalizeRemotePath(String path) {
+        if (path == null || path.length() == 0) {
+            return System.getProperty("user.home");
+        }
+
+        String normalized = path.replace("\\", "/");
+
+        if ("~".equals(normalized)) {
+            return System.getProperty("user.home");
+        }
+
+        if (normalized.startsWith("~/")) {
+            return System.getProperty("user.home") + normalized.substring(1);
+        }
+
+        while (normalized.contains("//")) {
+            normalized = normalized.replace("//", "/");
+        }
+
+        return normalized;
+    }
+
     private static boolean isSafePath(String path) {
-        // 黑名单：禁止操作系统关键目录
-        String lower = path.toLowerCase();
-        String[] forbidden = { "c:\\windows", "c:\\program files", "c:\\program files (x86)", "system32" };
+        String lower = normalizeRemotePath(path).toLowerCase();
+        String[] forbidden = {
+                "c:/windows",
+                "c:/program files",
+                "c:/program files (x86)",
+                "system32"
+        };
         for (String f : forbidden) {
             if (lower.contains(f))
                 return false;
@@ -570,52 +598,148 @@ public class TcpServer {
     }
 
     private static String listDirectory(String path) {
+        String normalizedPath = normalizeRemotePath(path);
+        File dir = new File(normalizedPath);
+
+        System.out.println("LIST 请求路径：" + path);
+        System.out.println("LIST 规范路径：" + normalizedPath);
+        System.out.println("exists=" + dir.exists() + ", isDirectory=" + dir.isDirectory() + ", canRead=" + dir.canRead());
+
         StringBuilder json = new StringBuilder();
-        json.append("{\"path\":\"").append(escapeJson(path)).append("\",\"files\":[");
-        File dir = new File(path);
-        if (dir.exists() && dir.isDirectory()) {
-            File[] files = dir.listFiles();
-            if (files != null) {
-                Arrays.sort(files, (a, b) -> {
-                    if (a.isDirectory() && !b.isDirectory())
-                        return -1;
-                    if (!a.isDirectory() && b.isDirectory())
-                        return 1;
-                    return a.getName().compareToIgnoreCase(b.getName());
-                });
-                boolean first = true;
-                for (File f : files) {
-                    if (f.isHidden() || f.getName().startsWith("$"))
-                        continue;
-                    if (!first)
-                        json.append(",");
-                    first = false;
-                    json.append("{");
-                    json.append("\"name\":\"").append(escapeJson(f.getName())).append("\",");
-                    json.append("\"isDir\":").append(f.isDirectory()).append(",");
-                    json.append("\"size\":").append(f.isFile() ? f.length() : 0).append(",");
-                    json.append("\"modified\":\"").append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
-                            .format(new Date(f.lastModified()))).append("\"");
-                    json.append("}");
+        json.append("{\"path\":\"").append(escapeJson(normalizedPath)).append("\",\"files\":[");
+
+        boolean first = true;
+        int addedCount = 0;
+        int maxCount = 300;          // 防止目录内容太多，writeUTF 超过 64KB 后客户端一直转圈
+        int maxJsonBytes = 58000;    // DataOutputStream.writeUTF 上限约 65535 bytes，留一点安全余量
+
+        try {
+            if (dir.exists() && dir.isDirectory()) {
+                File[] files = dir.listFiles();
+
+                if (files != null) {
+                    Arrays.sort(files, (a, b) -> {
+                        try {
+                            if (a.isDirectory() && !b.isDirectory())
+                                return -1;
+                            if (!a.isDirectory() && b.isDirectory())
+                                return 1;
+                            return a.getName().compareToIgnoreCase(b.getName());
+                        } catch (Exception e) {
+                            return 0;
+                        }
+                    });
+
+                    for (File f : files) {
+                        try {
+                            if (addedCount >= maxCount) {
+                                System.out.println("LIST 提前截断：文件数量超过 " + maxCount + "，路径：" + normalizedPath);
+                                break;
+                            }
+
+                            String name = f.getName();
+                            if (name == null || name.length() == 0) {
+                                continue;
+                            }
+
+                            if (f.isHidden() || name.startsWith("$")) {
+                                continue;
+                            }
+
+                            String modified;
+                            try {
+                                modified = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+                                        .format(new Date(f.lastModified()));
+                            } catch (Exception e) {
+                                modified = "";
+                            }
+
+                            StringBuilder item = new StringBuilder();
+                            if (!first) {
+                                item.append(",");
+                            }
+                            item.append("{");
+                            item.append("\"name\":\"").append(escapeJson(name)).append("\",");
+                            item.append("\"isDir\":").append(f.isDirectory()).append(",");
+                            item.append("\"size\":").append(f.isFile() ? f.length() : 0).append(",");
+                            item.append("\"modified\":\"").append(modified).append("\"");
+                            item.append("}");
+
+                            int nextBytes = (json.length() + item.length() + 2) * 3;
+                            if (nextBytes > maxJsonBytes) {
+                                System.out.println("LIST 提前截断：JSON 过大，避免 writeUTF 超限。路径：" + normalizedPath);
+                                break;
+                            }
+
+                            json.append(item);
+                            first = false;
+                            addedCount++;
+
+                        } catch (Exception fileException) {
+                            System.out.println("跳过无法读取的文件项：" + f.getAbsolutePath() + "，原因：" + fileException.getMessage());
+                        }
+                    }
+
+                    System.out.println("LIST 返回数量：" + addedCount + "，路径：" + normalizedPath);
+                } else {
+                    System.out.println("LIST 失败：目录无法读取，可能是 macOS 权限未授予 Terminal / Java。路径：" + normalizedPath);
                 }
+            } else {
+                System.out.println("LIST 失败：路径不存在或不是目录：" + normalizedPath);
             }
+        } catch (Exception e) {
+            System.out.println("LIST 异常，但仍返回空列表。路径：" + normalizedPath + "，原因：" + e.getMessage());
         }
+
         json.append("]}");
+
+        int bytes = json.toString().getBytes(StandardCharsets.UTF_8).length;
+        System.out.println("LIST JSON 大小：" + bytes + " bytes");
+
         return json.toString();
     }
 
     private static String listDrives() {
         StringBuilder json = new StringBuilder();
         json.append("{\"drives\":[");
-        File[] roots = File.listRoots();
+
         boolean first = true;
-        for (File root : roots) {
-            if (!first)
-                json.append(",");
-            first = false;
-            String path = root.getAbsolutePath().replace("\\", "/");
-            json.append("\"").append(escapeJson(path)).append("\"");
+        String os = System.getProperty("os.name").toLowerCase();
+
+        if (os.contains("mac")) {
+            String home = System.getProperty("user.home");
+            String[] macRoots = {
+                    home,
+                    home + "/Desktop",
+                    home + "/Documents",
+                    home + "/Downloads",
+                    "/Users",
+                    "/Volumes",
+                    "/"
+            };
+
+            for (String rootPath : macRoots) {
+                File root = new File(rootPath);
+                if (!root.exists()) {
+                    continue;
+                }
+                if (!first)
+                    json.append(",");
+                first = false;
+                String path = root.getAbsolutePath().replace("\\", "/");
+                json.append("\"").append(escapeJson(path)).append("\"");
+            }
+        } else {
+            File[] roots = File.listRoots();
+            for (File root : roots) {
+                if (!first)
+                    json.append(",");
+                first = false;
+                String path = root.getAbsolutePath().replace("\\", "/");
+                json.append("\"").append(escapeJson(path)).append("\"");
+            }
         }
+
         json.append("]}");
         return json.toString();
     }
